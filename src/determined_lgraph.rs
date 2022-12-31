@@ -88,8 +88,8 @@ where
 
         'token_iter: for (i, token) in string
             .iter()
-            .cloned()
-            .chain((0..).map(|_| T::new_empty()))
+            .map(Some)
+            .chain((0..).map(|_| None))
             .enumerate()
         {
             consumed_tokens_count = i;
@@ -97,11 +97,11 @@ where
                 let taken_edge = self
                     .edges_from(cur_node)
                     .filter_map(|e| self.edge(e))
-                    .filter(|e| e.token == &token)
+                    .filter(|e| e.token.as_ref() == token)
                     .chain(
                         self.edges_from(cur_node)
                             .filter_map(|e| self.edge(e))
-                            .filter(|e| e.token.is_empty()),
+                            .filter(|e| e.token.is_none()),
                     )
                     .find(|e| bracket_stack.try_accept(e.brackets))
                     .ok_or_else(|| DeterminedLGraphError::NoWayToContinue {
@@ -117,7 +117,7 @@ where
                     TargetNode::Node(next) => cur_node = next,
                 }
 
-                if taken_edge.token == &token {
+                if taken_edge.token.as_ref() == token {
                     break;
                 }
             }
@@ -149,258 +149,95 @@ impl TraversalPath {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
 
-    use super::*;
-    use crate::lgraph::{defaults::DefaultToken, *};
+    use std::str::FromStr;
+
+    use super::DeterminedLGraph;
+    use crate::{determined_lgraph::TraversalPath, lgraph::defaults::*};
 
     #[test]
-    fn traverse_single_bracket() {
-        let g = DeterminedLGraph::new_unchecked(DefaultLGraph::new(
-            vec![
-                DefaultEdge::new(
-                    0,
-                    DefaultToken(Some('a')),
-                    HashSet::from([DefaultBracket::SquareOpen(0)]),
-                    TargetNode::Node(0),
-                ),
-                DefaultEdge::new(
-                    0,
-                    DefaultToken(Some('b')),
-                    HashSet::new(),
-                    TargetNode::Node(1),
-                ),
-                DefaultEdge::new(
-                    1,
-                    DefaultToken(Some('c')),
-                    HashSet::from([DefaultBracket::SquareClose(0)]),
-                    TargetNode::Node(1),
-                ),
-                DefaultEdge::new(1, DefaultToken(None), HashSet::new(), TargetNode::End),
-            ],
-            vec!["A".to_string(), "B".to_string()],
-        ));
+    fn traverse_complicated() {
+        let s = "
+            0 () {[0}    (1)
+            1 () {]0,<1} (1)
+            1 () {>1,[1} (1)
+            1 () {>0}    (3)
+            1 () {]1,<0} (2)
+            2 () {}      (3)
+            3 () {>0}    ()
+        ";
 
+        let g: LGraph<char, Bracket, String> = LGraph::from_str(s).unwrap();
+        let g = DeterminedLGraph::new_unchecked(g);
+        dbg!(&g);
+        let t = g.traverse("".chars().collect::<Vec<_>>().as_slice());
+        assert_eq!(t, Ok(TraversalPath::new(vec![0, 1, 2, 4, 5, 6])));
+    }
+
+    #[test]
+    fn traverse_single() {
+        let s = "
+            0 (a) {[0} (0)
+            0 (b) {}   (1)
+            1 (a) {]0} (1)
+            1 ()  {}   ()
+        ";
+        let g: LGraph<char, Bracket, String> = LGraph::from_str(s).unwrap();
+        let g = DeterminedLGraph::new_unchecked(g);
         assert_eq!(
-            g.traverse(
-                "b".chars()
-                    .map(|c| DefaultToken(Some(c)))
-                    .collect::<Vec<_>>()
-                    .as_slice()
-            ),
-            Ok(TraversalPath::new(vec![1, 3]))
-        );
-        assert_eq!(
-            g.traverse(
-                "abc"
-                    .chars()
-                    .map(|c| DefaultToken(Some(c)))
-                    .collect::<Vec<_>>()
-                    .as_slice()
-            ),
+            g.traverse("aba".chars().collect::<Vec<_>>().as_slice()),
             Ok(TraversalPath::new(vec![0, 1, 2, 3]))
         );
         assert_eq!(
-            g.traverse(
-                "aabcc"
-                    .chars()
-                    .map(|c| DefaultToken(Some(c)))
-                    .collect::<Vec<_>>()
-                    .as_slice()
-            ),
-            Ok(TraversalPath::new(vec![0, 0, 1, 2, 2, 3]))
-        );
-        assert_eq!(
-            g.traverse(
-                "aaaaaaaaabccccccccc"
-                    .chars()
-                    .map(|c| DefaultToken(Some(c)))
-                    .collect::<Vec<_>>()
-                    .as_slice()
-            ),
-            Ok(TraversalPath::new(vec![
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3
-            ]))
+            g.traverse("aaabaaa".chars().collect::<Vec<_>>().as_slice()),
+            Ok(TraversalPath::new(vec![0, 0, 0, 1, 2, 2, 2, 3]))
         );
         assert!(g
-            .traverse(
-                "aabc"
-                    .chars()
-                    .map(|c| DefaultToken(Some(c)))
-                    .collect::<Vec<_>>()
-                    .as_slice()
-            )
+            .traverse("aaabaa".chars().collect::<Vec<_>>().as_slice())
             .is_err());
         assert!(g
-            .traverse(
-                "bc".chars()
-                    .map(|c| DefaultToken(Some(c)))
-                    .collect::<Vec<_>>()
-                    .as_slice()
-            )
+            .traverse("a".chars().collect::<Vec<_>>().as_slice())
+            .is_err());
+        assert!(g
+            .traverse("".chars().collect::<Vec<_>>().as_slice())
             .is_err());
     }
 
     #[test]
-    fn traverse_multi_bracket() {
-        let g = DeterminedLGraph::new_unchecked(DefaultLGraph::new(
-            vec![
-                DefaultEdge::new(
-                    0,
-                    DefaultToken(Some('a')),
-                    HashSet::from([DefaultBracket::SquareOpen(0)]),
-                    TargetNode::Node(0),
-                ),
-                DefaultEdge::new(
-                    0,
-                    DefaultToken(Some('b')),
-                    HashSet::from([DefaultBracket::SquareClose(0), DefaultBracket::AngleOpen(0)]),
-                    TargetNode::Node(1),
-                ),
-                DefaultEdge::new(
-                    1,
-                    DefaultToken(Some('b')),
-                    HashSet::from([DefaultBracket::SquareClose(0), DefaultBracket::AngleOpen(0)]),
-                    TargetNode::Node(1),
-                ),
-                DefaultEdge::new(
-                    1,
-                    DefaultToken(Some('c')),
-                    HashSet::from([DefaultBracket::AngleClose(0)]),
-                    TargetNode::Node(2),
-                ),
-                DefaultEdge::new(
-                    2,
-                    DefaultToken(Some('c')),
-                    HashSet::from([DefaultBracket::AngleClose(0)]),
-                    TargetNode::Node(2),
-                ),
-                DefaultEdge::new(2, DefaultToken(None), HashSet::new(), TargetNode::End),
-            ],
-            vec!["1".to_string(), "2".to_string(), "3".to_string()],
-        ));
-
+    fn traverse_multi() {
+        let s = "
+            1 (a) {[0}    (1)
+            1 (b) {]0,<0} (2)
+            2 (b) {<0,]0} (2)
+            2 (c) {>0}    (3)
+            3 (c) {>0}    (3)
+            3 ()  {}      ()
+        ";
+        let g: LGraph<char, Bracket, String> = LGraph::from_str(s).unwrap();
+        let g = DeterminedLGraph::new_unchecked(g);
         assert_eq!(
-            g.traverse(
-                "abc"
-                    .chars()
-                    .map(|c| DefaultToken(Some(c)))
-                    .collect::<Vec<_>>()
-                    .as_slice()
-            ),
+            g.traverse("abc".chars().collect::<Vec<_>>().as_slice()),
             Ok(TraversalPath::new(vec![0, 1, 3, 5]))
         );
-
         assert_eq!(
-            g.traverse(
-                "aabbcc"
-                    .chars()
-                    .map(|c| DefaultToken(Some(c)))
-                    .collect::<Vec<_>>()
-                    .as_slice()
-            ),
-            Ok(TraversalPath::new(vec![0, 0, 1, 2, 3, 4, 5]))
-        );
-        assert_eq!(
-            g.traverse(
-                "aaaaabbbbbccccc"
-                    .chars()
-                    .map(|c| DefaultToken(Some(c)))
-                    .collect::<Vec<_>>()
-                    .as_slice()
-            ),
-            Ok(TraversalPath::new(vec![
-                0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 3, 4, 4, 4, 4, 5
-            ]))
+            g.traverse("aaabbbccc".chars().collect::<Vec<_>>().as_slice()),
+            Ok(TraversalPath::new(vec![0, 0, 0, 1, 2, 2, 3, 4, 4, 5]))
         );
         assert!(g
-            .traverse(
-                "aabc"
-                    .chars()
-                    .map(|c| DefaultToken(Some(c)))
-                    .collect::<Vec<_>>()
-                    .as_slice()
-            )
+            .traverse("aaabbbcc".chars().collect::<Vec<_>>().as_slice())
             .is_err());
         assert!(g
-            .traverse(
-                "abbc"
-                    .chars()
-                    .map(|c| DefaultToken(Some(c)))
-                    .collect::<Vec<_>>()
-                    .as_slice()
-            )
+            .traverse("aaabbccc".chars().collect::<Vec<_>>().as_slice())
             .is_err());
         assert!(g
-            .traverse(
-                "abcc"
-                    .chars()
-                    .map(|c| DefaultToken(Some(c)))
-                    .collect::<Vec<_>>()
-                    .as_slice()
-            )
+            .traverse("aabbbccc".chars().collect::<Vec<_>>().as_slice())
             .is_err());
-    }
-
-    #[test]
-    fn traverse_evil_empty() {
-        let g = DeterminedLGraph::new_unchecked(DefaultLGraph::new(
-            vec![
-                DefaultEdge::new(
-                    0,
-                    DefaultToken::new_empty(),
-                    HashSet::from([DefaultBracket::SquareOpen(0)]),
-                    TargetNode::Node(1),
-                ),
-                DefaultEdge::new(
-                    1,
-                    DefaultToken::new_empty(),
-                    HashSet::from([DefaultBracket::SquareClose(0), DefaultBracket::AngleOpen(1)]),
-                    TargetNode::Node(1),
-                ),
-                DefaultEdge::new(
-                    1,
-                    DefaultToken::new_empty(),
-                    HashSet::from([DefaultBracket::AngleClose(1), DefaultBracket::SquareOpen(1)]),
-                    TargetNode::Node(1),
-                ),
-                DefaultEdge::new(
-                    1,
-                    DefaultToken::new_empty(),
-                    HashSet::from([DefaultBracket::SquareClose(1)]),
-                    TargetNode::Node(2),
-                ),
-                DefaultEdge::new(
-                    1,
-                    DefaultToken::new_empty(),
-                    HashSet::from([DefaultBracket::AngleClose(0)]),
-                    TargetNode::Node(3),
-                ),
-                DefaultEdge::new(
-                    2,
-                    DefaultToken::new_empty(),
-                    HashSet::from([]),
-                    TargetNode::Node(3),
-                ),
-                DefaultEdge::new(
-                    3,
-                    DefaultToken::new_empty(),
-                    HashSet::from([]),
-                    TargetNode::End,
-                ),
-            ],
-            vec![
-                "0".to_string(),
-                "1".to_string(),
-                "2".to_string(),
-                "3".to_string(),
-            ],
-        ));
-
-        assert_eq!(
-            g.traverse(&[]),
-            Ok(TraversalPath::new(vec![0, 1, 2, 3, 5, 6]))
-        );
+        assert!(g
+            .traverse("a".chars().collect::<Vec<_>>().as_slice())
+            .is_err());
+        assert!(g
+            .traverse("".chars().collect::<Vec<_>>().as_slice())
+            .is_err());
     }
 }
 
@@ -443,7 +280,7 @@ where
     fn edge_dest(&self, edge: EdgeIndex) -> Option<TargetNode> {
         self.graph.edge_dest(edge)
     }
-    fn edge_token(&self, edge: EdgeIndex) -> Option<&T> {
+    fn edge_token(&self, edge: EdgeIndex) -> Option<&Option<T>> {
         self.graph.edge_token(edge)
     }
     fn edge_brackets(&self, edge: EdgeIndex) -> Option<&Self::BracketSet> {

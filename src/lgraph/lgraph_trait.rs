@@ -1,13 +1,10 @@
-use std::{borrow::Borrow, fmt::Debug, hash::Hash, marker::PhantomData};
+use std::{borrow::Borrow, fmt::Debug, marker::PhantomData};
 pub type EdgeIndex = usize;
 pub type NodeIndex = usize;
 pub type BracketKind = usize;
 pub type BracketIndex = usize;
 
-pub trait Token: Eq + Debug + Clone {
-    fn is_empty(&self) -> bool;
-    fn new_empty() -> Self;
-}
+pub trait Token: Eq + Debug + Clone {}
 pub trait Bracket: Sized + Eq + Debug + Clone {
     fn is_opening(&self) -> bool;
     fn is_closing(&self) -> bool {
@@ -23,7 +20,7 @@ pub trait Bracket: Sized + Eq + Debug + Clone {
     fn kind(&self) -> BracketKind;
     fn index(&self) -> BracketIndex;
 }
-pub trait Label: Eq + Debug + Clone + Hash {}
+pub trait Label: Eq + Debug + Clone {}
 pub trait BracketSet<'a, B>: Debug + Clone
 where
     B: Bracket + 'a,
@@ -49,7 +46,7 @@ where
     pub from: NodeIndex,
     pub to: TargetNode,
     pub brackets: &'a BS,
-    pub token: &'a T,
+    pub token: &'a Option<T>,
     _p: PhantomData<B>,
 }
 
@@ -64,7 +61,7 @@ where
         from: NodeIndex,
         to: TargetNode,
         barckets: &'a BS,
-        token: &'a T,
+        token: &'a Option<T>,
     ) -> Self {
         Self {
             index,
@@ -111,7 +108,7 @@ where
 
     fn edge_start(&self, edge: EdgeIndex) -> Option<NodeIndex>;
     fn edge_dest(&self, edge: EdgeIndex) -> Option<TargetNode>;
-    fn edge_token(&self, edge: EdgeIndex) -> Option<&T>;
+    fn edge_token(&self, edge: EdgeIndex) -> Option<&Option<T>>;
     fn edge_brackets(&self, edge: EdgeIndex) -> Option<&Self::BracketSet>;
     fn edge(&'a self, edge: EdgeIndex) -> Option<EdgeRef<T, B, Self::BracketSet>>;
 

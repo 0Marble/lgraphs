@@ -1,79 +1,81 @@
-use super::lgraph_trait::*;
+use super::lgraph_trait::{
+    Bracket as BracketTrait, BracketIndex, BracketKind, BracketSet as BracketSetTrait, EdgeIndex,
+    EdgeRef, LGraph as LGraphTrait, Label as LabelTrait, NodeIndex, NodeRef, TargetNode,
+    Token as TokenTrait,
+};
 use std::{
     borrow::Borrow, collections::HashSet, fmt::Debug, hash::Hash, marker::PhantomData, str::FromStr,
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum DefaultBracket {
+pub enum Bracket {
     SquareOpen(usize),
     SquareClose(usize),
     AngleOpen(usize),
     AngleClose(usize),
 }
 
-impl Label for String {}
-impl Bracket for DefaultBracket {
+impl LabelTrait for String {}
+impl TokenTrait for char {}
+
+impl BracketTrait for Bracket {
     fn is_opening(&self) -> bool {
-        matches!(
-            self,
-            DefaultBracket::SquareOpen(_) | DefaultBracket::AngleOpen(_)
-        )
+        matches!(self, Bracket::SquareOpen(_) | Bracket::AngleOpen(_))
     }
 
     fn complete(&self) -> Option<Self> {
         match self {
-            DefaultBracket::SquareOpen(n) => Some(Self::SquareClose(*n)),
-            DefaultBracket::AngleOpen(n) => Some(Self::AngleClose(*n)),
+            Bracket::SquareOpen(n) => Some(Self::SquareClose(*n)),
+            Bracket::AngleOpen(n) => Some(Self::AngleClose(*n)),
             _ => None,
         }
     }
 
     fn kind(&self) -> BracketKind {
         match self {
-            DefaultBracket::SquareOpen(_) => 0,
-            DefaultBracket::SquareClose(_) => 0,
-            DefaultBracket::AngleOpen(_) => 1,
-            DefaultBracket::AngleClose(_) => 1,
+            Bracket::SquareOpen(_) => 0,
+            Bracket::SquareClose(_) => 0,
+            Bracket::AngleOpen(_) => 1,
+            Bracket::AngleClose(_) => 1,
         }
     }
 
     fn index(&self) -> BracketIndex {
         match self {
-            DefaultBracket::SquareOpen(n) => *n,
-            DefaultBracket::SquareClose(n) => *n,
-            DefaultBracket::AngleOpen(n) => *n,
-            DefaultBracket::AngleClose(n) => *n,
+            Bracket::SquareOpen(n) => *n,
+            Bracket::SquareClose(n) => *n,
+            Bracket::AngleOpen(n) => *n,
+            Bracket::AngleClose(n) => *n,
         }
     }
 }
-pub enum DefaultBracketParseError {
+
+#[derive(Debug, Clone)]
+pub enum BracketParseError {
     InvalidBracket(char),
     InvalidIndex(String),
     EmptyString,
 }
-impl FromStr for DefaultBracket {
-    type Err = DefaultBracketParseError;
+impl FromStr for Bracket {
+    type Err = BracketParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let kind = s
-            .chars()
-            .next()
-            .ok_or(DefaultBracketParseError::EmptyString)?;
+        let kind = s.chars().next().ok_or(BracketParseError::EmptyString)?;
         let index = s[kind.len_utf8()..]
             .parse::<usize>()
-            .map_err(|e| DefaultBracketParseError::InvalidIndex(e.to_string()))?;
+            .map_err(|e| BracketParseError::InvalidIndex(e.to_string()))?;
 
         match kind {
             '[' => Ok(Self::SquareOpen(index)),
             ']' => Ok(Self::SquareClose(index)),
             '<' => Ok(Self::AngleOpen(index)),
             '>' => Ok(Self::AngleClose(index)),
-            _ => Err(DefaultBracketParseError::InvalidBracket(kind)),
+            _ => Err(BracketParseError::InvalidBracket(kind)),
         }
     }
 }
-impl<'a> BracketSet<'a, DefaultBracket> for HashSet<DefaultBracket> {
-    type BracketsIter = std::collections::hash_set::Iter<'a, DefaultBracket>;
+impl<'a> BracketSetTrait<'a, Bracket> for HashSet<Bracket> {
+    type BracketsIter = std::collections::hash_set::Iter<'a, Bracket>;
 
     fn brackets(&'a self) -> Self::BracketsIter {
         self.iter()
@@ -81,51 +83,16 @@ impl<'a> BracketSet<'a, DefaultBracket> for HashSet<DefaultBracket> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DefaultToken(pub Option<char>);
-impl Token for DefaultToken {
-    fn is_empty(&self) -> bool {
-        self.0.is_none()
-    }
-
-    fn new_empty() -> Self {
-        Self(None)
-    }
-}
-pub enum DefaultTokenParseError {
-    EmptyString,
-    InvalidCharCount,
-}
-impl FromStr for DefaultToken {
-    type Err = DefaultTokenParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut it = s.chars();
-        let first = it.next().ok_or(DefaultTokenParseError::EmptyString)?;
-        if first == '(' {
-            if it.next().map_or(false, |t| t == ')') && it.next().is_none() {
-                Ok(DefaultToken(None))
-            } else {
-                Err(DefaultTokenParseError::InvalidCharCount)
-            }
-        } else if it.next().is_some() {
-            Err(DefaultTokenParseError::InvalidCharCount)
-        } else {
-            Ok(DefaultToken(Some(first)))
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct DefaultEdge<'a, T = DefaultToken, B = DefaultBracket, BS = HashSet<DefaultBracket>> {
+pub struct Edge<'a, T = char, B = Bracket, BS = HashSet<Bracket>> {
     from: NodeIndex,
     to: TargetNode,
-    token: T,
+    token: Option<T>,
     brackets: BS,
     _p: PhantomData<(B, &'a i32)>,
 }
 
-impl<'a, T, B, BS> DefaultEdge<'a, T, B, BS> {
-    pub fn new(from: NodeIndex, token: T, brackets: BS, to: TargetNode) -> Self {
+impl<'a, T, B, BS> Edge<'a, T, B, BS> {
+    pub fn new(from: NodeIndex, token: Option<T>, brackets: BS, to: TargetNode) -> Self {
         Self {
             from,
             to,
@@ -136,43 +103,37 @@ impl<'a, T, B, BS> DefaultEdge<'a, T, B, BS> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct DefaultLGraph<
-    'a,
-    T = Option<char>,
-    B = DefaultBracket,
-    L = String,
-    BS = HashSet<DefaultBracket>,
-> {
-    edges: Vec<DefaultEdge<'a, T, B, BS>>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LGraph<'a, T = Option<char>, B = Bracket, L = String, BS = HashSet<Bracket>> {
+    edges: Vec<Edge<'a, T, B, BS>>,
     node_names: Vec<L>,
 }
 
-impl<'a, T, B, L, BS> DefaultLGraph<'a, T, B, L, BS>
+impl<'a, T, B, L, BS> LGraph<'a, T, B, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label,
-    BS: BracketSet<'a, B>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait,
+    BS: BracketSetTrait<'a, B>,
 {
-    pub fn new(edges: Vec<DefaultEdge<'a, T, B, BS>>, node_names: Vec<L>) -> Self {
+    pub fn new(edges: Vec<Edge<'a, T, B, BS>>, node_names: Vec<L>) -> Self {
         Self { edges, node_names }
     }
 }
 
-impl<'a, T, B, L, BS> LGraph<'a, T, B, L> for DefaultLGraph<'a, T, B, L, BS>
+impl<'a, T, B, L, BS> LGraphTrait<'a, T, B, L> for LGraph<'a, T, B, L, BS>
 where
-    T: Token + 'a,
-    L: Label + 'a,
-    B: Bracket + 'a,
-    BS: BracketSet<'a, B> + 'a,
+    T: TokenTrait + 'a,
+    L: LabelTrait + 'a,
+    B: BracketTrait + 'a,
+    BS: BracketSetTrait<'a, B> + 'a,
 {
-    type EdgeFromToIter = DefaultEdgeFromToIter<'a, T, B, L, BS>;
-    type EdgeFromIter = DefaultEdgeFromIter<'a, T, B, L, BS>;
-    type EdgeToIter = DefaultEdgeToIter<'a, T, B, L, BS>;
-    type EdgeIter = DefaultEdgeIter<'a, T, B, L, BS>;
-    type NodeIter = DefaultNodeIter<'a, T, B, L, BS>;
-    type NodeWithLabelIter<'b, Q> = DefaultNodeWithLabelIter<'a,'b,T,B,Q,L,BS>
+    type EdgeFromToIter = EdgeFromToIter<'a, T, B, L, BS>;
+    type EdgeFromIter = EdgeFromIter<'a, T, B, L, BS>;
+    type EdgeToIter = EdgeToIter<'a, T, B, L, BS>;
+    type EdgeIter = EdgeIter<'a, T, B, L, BS>;
+    type NodeIter = NodeIter<'a, T, B, L, BS>;
+    type NodeWithLabelIter<'b, Q> =   NodeWithLabelIter<'a,'b,T,B,Q,L,BS>
     where
         Q: ?Sized + 'b,
         L: Borrow<Q> + PartialEq<Q>,
@@ -181,7 +142,7 @@ where
     type BracketSet = BS;
 
     fn edges_from_to(&'a self, from: NodeIndex, to: TargetNode) -> Self::EdgeFromToIter {
-        DefaultEdgeFromToIter {
+        EdgeFromToIter {
             graph: self,
             from,
             to,
@@ -189,21 +150,21 @@ where
         }
     }
     fn edges_from(&'a self, from: NodeIndex) -> Self::EdgeFromIter {
-        DefaultEdgeFromIter {
+        EdgeFromIter {
             graph: self,
             from,
             i: 0,
         }
     }
     fn edges_to(&'a self, to: TargetNode) -> Self::EdgeToIter {
-        DefaultEdgeToIter {
+        EdgeToIter {
             graph: self,
             to,
             i: 0,
         }
     }
     fn edges(&'a self) -> Self::EdgeIter {
-        DefaultEdgeIter { graph: self, i: 0 }
+        EdgeIter { graph: self, i: 0 }
     }
 
     fn edge_start(&self, edge: EdgeIndex) -> Option<NodeIndex> {
@@ -212,7 +173,7 @@ where
     fn edge_dest(&self, edge: EdgeIndex) -> Option<TargetNode> {
         self.edges.get(edge).map(|e| e.to.clone())
     }
-    fn edge_token(&self, edge: EdgeIndex) -> Option<&T> {
+    fn edge_token(&self, edge: EdgeIndex) -> Option<&Option<T>> {
         self.edges.get(edge).map(|e| &e.token)
     }
     fn edge_brackets(&self, edge: EdgeIndex) -> Option<&Self::BracketSet> {
@@ -225,7 +186,7 @@ where
     }
 
     fn nodes(&'a self) -> Self::NodeIter {
-        DefaultNodeIter { graph: self, i: 0 }
+        NodeIter { graph: self, i: 0 }
     }
     fn nodes_with_label<'b, Q>(&'a self, label: &'b Q) -> Self::NodeWithLabelIter<'b, Q>
     where
@@ -233,7 +194,7 @@ where
         'b: 'a,
         L: std::borrow::Borrow<Q> + PartialEq<Q>,
     {
-        DefaultNodeWithLabelIter {
+        NodeWithLabelIter {
             graph: self,
             label,
             i: 0,
@@ -250,24 +211,24 @@ where
     }
 }
 
-pub struct DefaultEdgeFromToIter<'a, T, B, L, BS>
+pub struct EdgeFromToIter<'a, T, B, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label,
-    BS: BracketSet<'a, B>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait,
+    BS: BracketSetTrait<'a, B>,
 {
-    graph: &'a DefaultLGraph<'a, T, B, L, BS>,
+    graph: &'a LGraph<'a, T, B, L, BS>,
     from: NodeIndex,
     to: TargetNode,
     i: usize,
 }
-impl<'a, T, B, L, BS> Iterator for DefaultEdgeFromToIter<'a, T, B, L, BS>
+impl<'a, T, B, L, BS> Iterator for EdgeFromToIter<'a, T, B, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label,
-    BS: BracketSet<'a, B>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait,
+    BS: BracketSetTrait<'a, B>,
 {
     type Item = EdgeIndex;
     fn next(&mut self) -> Option<Self::Item> {
@@ -283,23 +244,23 @@ where
     }
 }
 
-pub struct DefaultEdgeFromIter<'a, T, B, L, BS>
+pub struct EdgeFromIter<'a, T, B, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label,
-    BS: BracketSet<'a, B>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait,
+    BS: BracketSetTrait<'a, B>,
 {
-    graph: &'a DefaultLGraph<'a, T, B, L, BS>,
+    graph: &'a LGraph<'a, T, B, L, BS>,
     from: NodeIndex,
     i: usize,
 }
-impl<'a, T, B, L, BS> Iterator for DefaultEdgeFromIter<'a, T, B, L, BS>
+impl<'a, T, B, L, BS> Iterator for EdgeFromIter<'a, T, B, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label,
-    BS: BracketSet<'a, B>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait,
+    BS: BracketSetTrait<'a, B>,
 {
     type Item = EdgeIndex;
     fn next(&mut self) -> Option<Self::Item> {
@@ -315,23 +276,23 @@ where
     }
 }
 
-pub struct DefaultEdgeToIter<'a, T, B, L, BS>
+pub struct EdgeToIter<'a, T, B, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label,
-    BS: BracketSet<'a, B>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait,
+    BS: BracketSetTrait<'a, B>,
 {
-    graph: &'a DefaultLGraph<'a, T, B, L, BS>,
+    graph: &'a LGraph<'a, T, B, L, BS>,
     to: TargetNode,
     i: usize,
 }
-impl<'a, T, B, L, BS> Iterator for DefaultEdgeToIter<'a, T, B, L, BS>
+impl<'a, T, B, L, BS> Iterator for EdgeToIter<'a, T, B, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label,
-    BS: BracketSet<'a, B>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait,
+    BS: BracketSetTrait<'a, B>,
 {
     type Item = EdgeIndex;
     fn next(&mut self) -> Option<Self::Item> {
@@ -347,22 +308,22 @@ where
     }
 }
 
-pub struct DefaultEdgeIter<'a, T, B, L, BS>
+pub struct EdgeIter<'a, T, B, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label,
-    BS: BracketSet<'a, B>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait,
+    BS: BracketSetTrait<'a, B>,
 {
-    graph: &'a DefaultLGraph<'a, T, B, L, BS>,
+    graph: &'a LGraph<'a, T, B, L, BS>,
     i: usize,
 }
-impl<'a, T, B, L, BS> Iterator for DefaultEdgeIter<'a, T, B, L, BS>
+impl<'a, T, B, L, BS> Iterator for EdgeIter<'a, T, B, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label,
-    BS: BracketSet<'a, B>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait,
+    BS: BracketSetTrait<'a, B>,
 {
     type Item = EdgeIndex;
     fn next(&mut self) -> Option<Self::Item> {
@@ -378,22 +339,22 @@ where
     }
 }
 
-pub struct DefaultNodeIter<'a, T, B, L, BS>
+pub struct NodeIter<'a, T, B, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label,
-    BS: BracketSet<'a, B>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait,
+    BS: BracketSetTrait<'a, B>,
 {
-    graph: &'a DefaultLGraph<'a, T, B, L, BS>,
+    graph: &'a LGraph<'a, T, B, L, BS>,
     i: usize,
 }
-impl<'a, T, B, L, BS> Iterator for DefaultNodeIter<'a, T, B, L, BS>
+impl<'a, T, B, L, BS> Iterator for NodeIter<'a, T, B, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label,
-    BS: BracketSet<'a, B>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait,
+    BS: BracketSetTrait<'a, B>,
 {
     type Item = NodeIndex;
     fn next(&mut self) -> Option<Self::Item> {
@@ -409,25 +370,25 @@ where
     }
 }
 
-pub struct DefaultNodeWithLabelIter<'a, 'b, T, B, Q, L, BS>
+pub struct NodeWithLabelIter<'a, 'b, T, B, Q, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label + Borrow<Q> + PartialEq<Q>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait + Borrow<Q> + PartialEq<Q>,
+    BS: BracketSetTrait<'a, B>,
     Q: ?Sized + 'b,
-    BS: BracketSet<'a, B>,
 {
-    graph: &'a DefaultLGraph<'a, T, B, L, BS>,
+    graph: &'a LGraph<'a, T, B, L, BS>,
     label: &'b Q,
     i: usize,
 }
-impl<'a, 'b, T, B, Q, L, BS> Iterator for DefaultNodeWithLabelIter<'a, 'b, T, B, Q, L, BS>
+impl<'a, 'b, T, B, Q, L, BS> Iterator for NodeWithLabelIter<'a, 'b, T, B, Q, L, BS>
 where
-    T: Token,
-    B: Bracket + 'a,
-    L: Label + Borrow<Q> + PartialEq<Q>,
+    T: TokenTrait,
+    B: BracketTrait + 'a,
+    L: LabelTrait + Borrow<Q> + PartialEq<Q>,
+    BS: BracketSetTrait<'a, B>,
     Q: ?Sized + 'b,
-    BS: BracketSet<'a, B>,
 {
     type Item = NodeIndex;
     fn next(&mut self) -> Option<Self::Item> {
@@ -448,16 +409,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_lgraph() {
-        let g = DefaultLGraph::new(
+    fn lgraph() {
+        let g = LGraph::new(
             vec![
-                DefaultEdge::new(
+                Edge::new(
                     0,
-                    DefaultToken(None),
-                    HashSet::from([DefaultBracket::AngleOpen(0)]),
+                    None,
+                    HashSet::from([Bracket::AngleOpen(0)]),
                     TargetNode::Node(1),
                 ),
-                DefaultEdge::new(1, DefaultToken(Some('a')), HashSet::new(), TargetNode::End),
+                Edge::new(1, Some('a'), HashSet::new(), TargetNode::End),
             ],
             vec!["A".to_string(), "A".to_string()],
         );
@@ -472,11 +433,11 @@ mod tests {
 
         assert_eq!(
             g.edge_brackets(0),
-            Some(&HashSet::from([DefaultBracket::AngleOpen(0)]))
+            Some(&HashSet::from([Bracket::AngleOpen(0)]))
         );
         assert_eq!(g.edge_brackets(1), Some(&HashSet::new()));
-        assert_eq!(g.edge_token(0), Some(&DefaultToken(None)));
-        assert_eq!(g.edge_token(1), Some(&DefaultToken(Some('a'))));
+        assert_eq!(g.edge_token(0), Some(&None));
+        assert_eq!(g.edge_token(1), Some(&Some('a')));
 
         assert_eq!(g.nodes().collect::<Vec<_>>(), vec![0, 1]);
         assert_eq!(g.nodes_with_label("A").collect::<Vec<_>>(), vec![0, 1]);
