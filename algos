@@ -1,0 +1,261 @@
+fn traverse(g: Graph, s: String of tokens):
+    cur_node = g.start_node()
+    next_token_index = 0
+    bracket_stack = new BracketStack
+    path = []
+
+    loop:
+        chosen_edge = None
+        cur_token = s.get(next_token_index) or None
+        
+        for edge in g.edges_from(cur_node):
+            // direct is a complicated operation
+            if g.direct_has(edge, cur_token) && bracket_stack.try_accept(edge.brackets): 
+                chosen_edge = edge
+                break
+        
+        if chosen_edge = None: return Error
+        if chosen_edge.token != None: next_token_index += 1
+        cur_node = chosen_edge.target
+        path.push(chosen_edge)
+        if cur_node = g.end_node: break
+    
+    return path
+
+/*
+    Definition:
+    direct(edge) = {
+        (token): (T1 edge T2) is a successfull path, (edge T2) starts with (token)
+        (none): (T1 edge T2) is a successfull path, (edge T2) has no tokens
+    }
+*/
+fn direct_has(g: Graph, e: Edge, t: Token):
+    idk...
+
+/*
+    Definition:
+    w: shows us the max number of bracket-balanced cycles that can start from a single node in one path
+    d: shows us the max depth of a bracket system in one path (I think there is a "None" bracket that is opened and closed when theres a 1 -> t, {} -> 1 type of situation, so [ None None ] has d = 2)
+*/
+fn is_in_core(g: Graph, w: usize, d: usize, path: Vec of edges):
+    if path.empty(): return True
+
+    cur_stack = new BracketStack
+    node_cycles = new HashMap{ (path[0].from, cur_stack.clone()) = 0 }
+    for edge in path:
+        cur_max_depth = cur_stack.accept_and_max_depth(edge.brackets) 
+        /* 
+            if edge.brackets had a None bracket, the result of that bracket
+            kind stack's depth is increased by 1
+        */
+        if cur_max_depth >= d: return False
+
+        cur_node = edge.to
+        if node_cycles.has( (cur_node, cur_stack) ):
+            count = node_cycles.get_ref( (cur_node, cur_stack) )
+            count += 1
+            if count > w: return False
+        else: node_cycles.add( (cur_node, cur_stack.clone()), 0)
+    return True
+
+fn core(g: Graph, w: usize, d: usize):
+/*
+    I guess there has to be a complete graph state stack, where we save the states we want to check next
+    There also has to be some way of storing resulting paths
+
+    State stack stores all the information about next possible move, assuming we already took it:
+        path, cur_node, bracket_stack
+
+    1. if stack is empty, we are finished, return the results list
+    2. take a state from the stack
+    3. make the step, check its' validity
+    4. if invalid, go to 1
+    5. we add all the next reachable states to the stack
+    6. if we have reached the end successfully, store the resulting path in the results list
+    7. go to 1
+*/
+    state_stack = [ ([], g.start_node(), new BracketStack) ]
+    results = []
+
+    loop:
+        if state_stack.empty(): break
+
+        (path, node, brackets) = state_stack.pop()
+        if g.is_end_node(node) && brackets.completed():
+            results.push(path)
+        
+        for edge in g.edges_from(node):
+            if brackets.can_accept(edge.brackets):
+                new_brackets = brackets.clone()
+                new_brackets.accept(edge.brackets)
+                new_path = path.clone()
+                new_path.push(edge)
+                if g.path_in_core(w, d, new_path): // its possible to save some core-check information in the state stack
+                    state_stack.push( (new_path, edge.target, new_brackets) )
+    return results
+
+/*
+    Given paths p from a graph g0, generates a new graph g1
+    for each path in p, we need to generate a chain
+    (l0 s0) [t0 b0] (l1 s1) [t1 b1] ... (ln sn) [tn bn] (ln+1 bn+1)
+    where 
+        li - node label at ith state of the path, 
+        si - bracket stack state at ith state of the path
+        ti - token for the edge transitioning form ith to i+1st state
+        bi - brackets for the edge transitioning form ith to i+1st state
+    all those chains specify new edges for g1, whose node label type is 
+    a tuple (old_node_label, bracket_stack)
+
+    after constructing g1, we need to figure out which brackets are useless, 
+    and can be removed completely (?the pdf suggests i do this, but i personally think its not useful, 
+    since the next step is removing all the brackets anyways?)
+
+*/
+fn graph_from_paths(g: Graph, p: [Path]):
+    ...
+
+/*
+    next step is connecting g11 core(1, 1) and g12 core(1, 2) graphs
+    not sure how to do it...
+*/
+fn normal_form(g: Graph):
+    core11 = g.core(1, 1)
+    g11 = g.graph_from_paths(core11)
+    core12 = g.core(1, 2)
+
+    edges = g11.edges()
+    for path in core12:
+        /* 
+            1. find all enclosed systems s in path
+            2. lets say s = A -a[-> A[ -a[-> .. -b]-> B[ -b]-> B
+                (first two are same old label, same token, same brackets, last two too)
+            3. that means, we need to check if core11 graph has a path
+                s1 = A -a[-> .. -b]-> B
+                (basically the same, the difference is its 2 nodes shorter, and 1 less nested)
+            4. if so, we can add 2 edges to core11:
+                A -> a[ -> A
+                B -> b] -> B
+        */
+        for s in g.enclosed_parts(path): 
+            // how does it work with multiple systems of brackets...
+            n = g.path_to_nodes(s)
+            if n[0].name != n[1].name || n[-1].name != n[-2].name: continue
+            if s[0] != s[1] || s[-2] != s[-1]: continue
+            if !s[0].brackets.are_completed_by(s[-1].brackets): continue
+
+/*
+    than, we create the regular image (a finite state machine, created by just removing brackets)
+*/
+fn regular_image(g: Graph):
+    new_edges = []
+    for edge in g.edges():
+        new_edges.push( (edge.from, edge.token, edge.to) )
+    g1 = StateMachine
+            .from_edges(new_egdes, g.start_node(), new Set{g.end_node()})
+            .determine()
+            .minimize()
+    return g1
+
+/*
+    State Machine = (Q, E, d, q0, F),
+    where 
+    Q - states, 
+    E - tokens, 
+    d: (Q, E) -> Q* - edges
+    q0 - staring state
+    F - final states
+
+    d' are edges of the determined state machine:
+    d'(S, a)=S', S is a subset of Q, S' is all the reachable nodes from S, given that the token is a
+    1 state of the determined state machine is a subset of Q
+*/
+fn determine(g: StateMachine):
+    new_edges = []
+    for s in g.nodes().subsets():
+        from_s = new HashMap {} // from token to set of nodes        
+        for n in s:
+            for e in n.edges():
+                from_s.get_or_insert(new Set{}, e.token).insert(e.target)
+
+        if !from_s.empty():
+            for token, target in from_s:
+                new_edges.push(s, token, target)
+
+    end_nodes = []
+    for s in g.nodes().subsets():
+        if !s.intersect(g.end_nodes()).empty():
+            end_nodes.puhs(s)
+
+    return StateMachine.from_edges(new_edges, new Set{g.start_node()}, s)
+
+fn reachable_from(g: StateMachine, a: Node):
+    reached = new Set{a}
+        stack = [a]
+        loop:
+            b = stack.pop()
+            reached.push(b)
+            for c g.targets_of(b):
+                if !reached.has(c):
+                    stack.push(c)
+    return reached        
+
+fn remove_unreachable(g: StateMachine):
+    total_reached = new Set{}
+    for a in g.start_nodes():
+        total_reached.combine(g.reachable_from(a))
+    new_edges = []
+    for e in g.edges():
+        if total_reached.has(e.from) && total_reached.has(e.to):
+            new_edges.push(e)
+    
+    return StateMachine.from_edges(new_edges)
+
+// remove recursion
+fn are_k_equivalent(g: StateMachine, a: Node, b: Node, k: usize):
+    if k == 0:
+        return g.is_end_node(a) == g.is_end_node(b)
+    
+    for t in g.edges_from(a).tokens().or(g.edges_from(b).tokens()):
+        a_next = a.next(t)
+        b_next = b.next(t)
+
+        for (a1, b1) in all_combinations(a_next, b_next):
+            // possibly having to check a pair multiple times
+            if !g.are_k_equivalent(a1, b1, k - 1):
+                return false
+    return g.are_k_equivalent(a, b, k - 1)
+
+// if a =k b and b =k c then a =k c
+fn equivalence_groups(g: StateMachine, k: usize):
+    groups = []
+    for a in g.nodes():
+        pushed = false
+        for group in groups:
+            if group.get(0).map_or(false, |b| g.are_k_equivalent(a, b)):
+                group.push(a)
+                pushed = true
+        if !pushed:
+            groups.push([a])
+    return groups
+
+/*
+    prev_groups can be used to determine if two nodes are k equivalent 
+    by using prev_groups as a look up in the are_k_equivalent
+*/
+fn minimize(g: StateMachine):
+    g = g.remove_unreachable()
+    
+    prev_groups = []
+    for k in 0.. : 
+        cur_groups = g.equivalence_groups(k)
+        if cur_groups == prev_groups:
+            break
+        else
+            prev_groups = cur_groups
+    edges = []
+    for a_group in prev_groups:
+        a = a_group[0]
+        for e in g.edges_from(a):
+            b_group = prev_groups that has (e.to)
+            edges.push(new Edge(a_group, e.token, b_group))
+    return StateMachine.from_edges(edges)
