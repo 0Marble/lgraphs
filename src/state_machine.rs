@@ -1,11 +1,11 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     hash::Hash,
 };
 
 use crate::{
-    graph::{Graph, Node, NodeIndex},
-    iters::Subsets,
+    graph::{EdgeIndex, EdgeRef, Graph, Node, NodeIndex, NodeRef},
+    iters::{AllPairs, Subsets},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +51,50 @@ impl<L, I> StateMachine<L, I> {
     pub fn end_nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
         self.graph.end_nodes()
     }
+    pub fn item(&self, edge: EdgeIndex) -> Option<&I> {
+        self.graph.item(edge)
+    }
+    pub fn label(&self, node: NodeIndex) -> Option<&L> {
+        self.graph.label(node)
+    }
+    pub fn target(&self, edge: EdgeIndex) -> Option<NodeIndex> {
+        self.graph.target(edge)
+    }
+    pub fn source(&self, edge: EdgeIndex) -> Option<NodeIndex> {
+        self.graph.source(edge)
+    }
+    pub fn edge_ref(&self, edge: EdgeIndex) -> Option<EdgeRef<'_, I, L>> {
+        self.graph.edge_ref(edge)
+    }
+    pub fn node_ref(&self, node: NodeIndex) -> Option<NodeRef<'_, L>> {
+        self.graph.node_ref(node)
+    }
+    pub fn nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
+        self.graph.nodes()
+    }
+    pub fn edges(&self) -> impl Iterator<Item = EdgeIndex> + '_ {
+        self.graph.edges()
+    }
+    pub fn edges_from(&self, node: NodeIndex) -> impl Iterator<Item = EdgeIndex> + '_ {
+        self.graph.edges_from(node)
+    }
+    pub fn edges_to(&self, node: NodeIndex) -> impl Iterator<Item = EdgeIndex> + '_ {
+        self.graph.edges_to(node)
+    }
+    pub fn edges_from_with<'a, 'b>(
+        &'a self,
+        node: NodeIndex,
+        item: &'b I,
+    ) -> impl Iterator<Item = EdgeIndex> + 'a
+    where
+        'b: 'a,
+        I: Eq,
+    {
+        self.graph.edges_from_with(node, item)
+    }
+    pub fn is_end_node(&self, node: NodeIndex) -> bool {
+        self.graph.is_end_node(node)
+    }
 
     pub fn determine(&self) -> StateMachine<MultiStateNode<L>, I>
     where
@@ -60,25 +104,22 @@ impl<L, I> StateMachine<L, I> {
         let mut new_edges = vec![];
         let mut end_nodes = HashSet::new();
 
-        for new_node in Subsets::new(self.graph.nodes()) {
-            let mut from: HashMap<&I, HashSet<NodeIndex>> = HashMap::new();
+        for new_node in Subsets::new(self.nodes()) {
+            let mut edges: HashMap<&I, HashSet<NodeIndex>> = HashMap::new();
             for node in &new_node {
-                for edge in self
-                    .graph
-                    .edges_from(*node)
-                    .flat_map(|e| self.graph.edge_ref(e))
-                {
-                    from.entry(edge.item())
+                for edge in self.edges_from(*node).flat_map(|e| self.edge_ref(e)) {
+                    edges
+                        .entry(edge.item())
                         .or_default()
                         .insert(edge.target_index());
                 }
             }
-            if !from.is_empty() {
-                for (item, target) in from {
+            if !edges.is_empty() {
+                for (item, target) in edges {
                     let source = Node::new(MultiStateNode::new(
                         new_node
                             .iter()
-                            .flat_map(|i| self.graph.node_ref(*i))
+                            .flat_map(|i| self.node_ref(*i))
                             .map(|r| Node::new(r.label().clone()))
                             .collect(),
                     ));
@@ -88,7 +129,7 @@ impl<L, I> StateMachine<L, I> {
                         Node::new(MultiStateNode::new(
                             target
                                 .iter()
-                                .flat_map(|i| self.graph.node_ref(*i))
+                                .flat_map(|i| self.node_ref(*i))
                                 .map(|r| Node::new(r.label().clone()))
                                 .collect(),
                         )),
@@ -101,7 +142,7 @@ impl<L, I> StateMachine<L, I> {
                     end_nodes.insert(Node::new(MultiStateNode::new(
                         new_node
                             .iter()
-                            .flat_map(|i| self.graph.node_ref(*i))
+                            .flat_map(|i| self.node_ref(*i))
                             .map(|r| Node::new(r.label().clone()))
                             .collect(),
                     )));
@@ -113,8 +154,7 @@ impl<L, I> StateMachine<L, I> {
             graph: Graph::from_edges(
                 new_edges,
                 HashSet::from([Node::new(MultiStateNode::new(HashSet::from_iter(
-                    self.graph
-                        .node_ref(self.start_node())
+                    self.node_ref(self.start_node())
                         .map(|n| Node::new(n.label().clone())),
                 )))]),
                 end_nodes,
@@ -126,14 +166,12 @@ impl<L, I> StateMachine<L, I> {
     where
         I: Eq,
     {
-        self.graph.nodes().all(|node| {
-            self.graph
-                .edges_from(node)
-                .flat_map(|e| self.graph.edge_ref(e))
+        self.nodes().all(|node| {
+            self.edges_from(node)
+                .flat_map(|e| self.edge_ref(e))
                 .map(|e| e.item())
                 .all(|item| {
-                    self.graph
-                        .edges_from_with(node, item)
+                    self.edges_from_with(node, item)
                         .try_fold(None, |prev, cur| match prev {
                             Some(prev) => {
                                 if prev == cur {
@@ -147,6 +185,186 @@ impl<L, I> StateMachine<L, I> {
                         .is_ok()
                 })
         })
+    }
+
+    pub fn reachable_from(&self, node: NodeIndex) -> ReachableFrom<'_, L, I> {
+        ReachableFrom::new(self, node)
+    }
+
+    pub fn remove_unreachable(&self) -> Self
+    where
+        L: Clone + Eq + Hash,
+        I: Clone,
+    {
+        let reachable = self
+            .reachable_from(self.start_node())
+            .collect::<HashSet<_>>();
+
+        let mut new_edges = vec![];
+        for (from, to, item) in self
+            .graph
+            .edges()
+            .flat_map(|e| self.edge_ref(e))
+            .map(|e| (e.source_index(), e.target_index(), e))
+            .filter_map(|(a, b, e)| Some((self.node_ref(a)?, self.node_ref(b)?, e.item())))
+        {
+            if reachable.contains(&from.index()) && reachable.contains(&to.index()) {
+                new_edges.push((
+                    Node::new(from.label().clone()),
+                    item.clone(),
+                    Node::new(to.label().clone()),
+                ))
+            }
+        }
+
+        Self::new(Graph::from_edges(
+            new_edges,
+            self.node_ref(self.start_node())
+                .map(|n| Node::new(n.label().clone())),
+            reachable
+                .intersection(&HashSet::from_iter(self.end_nodes()))
+                .flat_map(|n| self.node_ref(*n).map(|n| Node::new(n.label().clone()))),
+        ))
+    }
+
+    fn are_equivalent(&self, a: NodeIndex, b: NodeIndex, groups: &[HashSet<NodeIndex>]) -> bool {
+        groups
+            .iter()
+            .any(|group| group.contains(&a) && group.contains(&b))
+    }
+
+    fn are_next_equivalent(&self, a: NodeIndex, b: NodeIndex, prev: &[HashSet<NodeIndex>]) -> bool
+    where
+        I: Eq,
+    {
+        if !self.are_equivalent(a, b, prev) {
+            return false;
+        }
+
+        for item in self
+            .edges_from(a)
+            .flat_map(|e| self.item(e))
+            .chain(self.edges_from(b).flat_map(|e| self.item(e)))
+        {
+            for (a_next, b_next) in AllPairs::new(
+                self.edges_from_with(a, item).flat_map(|e| self.target(e)),
+                self.edges_from_with(b, item).flat_map(|e| self.target(e)),
+            ) {
+                if !self.are_equivalent(a_next, b_next, prev) {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    fn next_eqivalence_group(&self, prev: &[HashSet<NodeIndex>]) -> Vec<HashSet<NodeIndex>>
+    where
+        I: Clone + Eq + Hash,
+        L: Clone + Eq + Hash,
+    {
+        let mut new_groups: Vec<HashSet<NodeIndex>> = vec![];
+
+        let mut section_start = 0;
+        for group in prev {
+            let mut pushed = false;
+
+            for a in group {
+                for new_group in &mut new_groups[section_start..] {
+                    let b = new_group.iter().next().unwrap();
+                    if self.are_next_equivalent(*a, *b, prev) {
+                        new_group.insert(*a);
+                        pushed = true;
+                        break;
+                    }
+                }
+
+                if !pushed {
+                    new_groups.push(HashSet::from([*a]));
+                }
+            }
+            section_start = new_groups.len();
+        }
+
+        new_groups
+    }
+
+    pub fn minimize(&self) -> Self
+    where
+        I: Clone + Eq + Hash,
+        L: Clone + Eq + Hash,
+    {
+        let g = self.remove_unreachable();
+        let mut prev = vec![HashSet::new(), HashSet::new()];
+        for a in g.graph.nodes() {
+            if self.is_end_node(a) {
+                prev[1].insert(a);
+            } else {
+                prev[0].insert(a);
+            }
+        }
+
+        for k in 1.. {
+            let cur = g.next_eqivalence_group(&prev);
+            if cur == prev {
+                break;
+            } else {
+                prev = cur;
+            }
+        }
+
+        let mut new_edges = vec![];
+        for group in &prev {
+            let a = group.iter().next().unwrap();
+
+            for b in g.edges_from(*a).flat_map(|e| g.target(e)) {
+                for target_group in &prev {
+                    if target_group.contains(&b) {
+                        new_edges.push(())
+                    }
+                }
+            }
+        }
+
+        todo!()
+    }
+}
+
+pub struct ReachableFrom<'a, L, I> {
+    graph: &'a StateMachine<L, I>,
+    stack: VecDeque<NodeIndex>,
+    reached: HashSet<NodeIndex>,
+}
+
+impl<'a, L, I> Iterator for ReachableFrom<'a, L, I> {
+    type Item = NodeIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let node = self.stack.pop_front()?;
+
+        for target in self
+            .graph
+            .graph
+            .edges_from(node)
+            .flat_map(|edge| self.graph.target(edge))
+        {
+            if self.reached.insert(target) {
+                self.stack.push_front(target);
+            }
+        }
+
+        Some(node)
+    }
+}
+
+impl<'a, L, I> ReachableFrom<'a, L, I> {
+    pub fn new(graph: &'a StateMachine<L, I>, node: NodeIndex) -> Self {
+        Self {
+            graph,
+            stack: VecDeque::from([node]),
+            reached: HashSet::from([node]),
+        }
     }
 }
 

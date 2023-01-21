@@ -190,13 +190,13 @@ fn determine(g: StateMachine):
 
 fn reachable_from(g: StateMachine, a: Node):
     reached = new Set{a}
-        stack = [a]
-        loop:
-            b = stack.pop()
-            reached.push(b)
-            for c g.targets_of(b):
-                if !reached.has(c):
-                    stack.push(c)
+    stack = [a]
+    loop:
+        b = stack.pop()
+        reached.push(b)
+        for c g.targets_of(b):
+            if !reached.has(c):
+                stack.push(c)
     return reached        
 
 fn remove_unreachable(g: StateMachine):

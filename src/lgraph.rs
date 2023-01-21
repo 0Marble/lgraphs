@@ -4,7 +4,7 @@ use std::{
     hash::Hash,
 };
 
-use crate::graph::{EdgeIndex, Graph, NodeIndex, PathRef};
+use crate::graph::{EdgeIndex, EdgeRef, Graph, NodeIndex, NodeRef, PathRef};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Bracket<K> {
@@ -41,6 +41,24 @@ impl<K> BracketSet<K> {
         }
 
         Self { set }
+    }
+}
+impl<K> IntoIterator for BracketSet<K> {
+    type Item = Bracket<K>;
+
+    type IntoIter = std::collections::hash_set::IntoIter<Bracket<K>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.set.into_iter()
+    }
+}
+impl<'a, K> IntoIterator for &'a BracketSet<K> {
+    type Item = &'a Bracket<K>;
+
+    type IntoIter = std::collections::hash_set::Iter<'a, Bracket<K>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.set.iter()
     }
 }
 
@@ -96,7 +114,7 @@ impl<K> BracketStack<K> {
     where
         K: Eq + Hash + Clone,
     {
-        for bracket in set.set.iter() {
+        for bracket in set {
             if let Some(stack) = self.stacks.get(&bracket.kind) {
                 if !bracket.is_opening {
                     match stack.front() {
@@ -121,7 +139,7 @@ impl<K> BracketStack<K> {
     where
         K: Eq + Hash + Clone,
     {
-        for bracket in set.set.into_iter() {
+        for bracket in set.into_iter() {
             let stack = self.stacks.entry(bracket.kind).or_default();
             if bracket.is_opening {
                 stack.push_front(bracket.index)
@@ -175,15 +193,45 @@ impl<K> From<BracketStackError<K>> for LGraphError<K> {
 }
 
 impl<L, I, K> LGraph<L, I, K> {
-    pub fn new_unchecked(graph: Graph<L, (Option<I>, BracketSet<K>)>) -> Self {
-        Self { graph }
-    }
-
     pub fn start_node(&self) -> NodeIndex {
         self.graph.start_nodes().into_iter().next().unwrap()
     }
     pub fn end_nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
         self.graph.end_nodes()
+    }
+    pub fn item(&self, edge: EdgeIndex) -> Option<&(Option<I>, BracketSet<K>)> {
+        self.graph.item(edge)
+    }
+    pub fn label(&self, node: NodeIndex) -> Option<&L> {
+        self.graph.label(node)
+    }
+    pub fn target(&self, edge: EdgeIndex) -> Option<NodeIndex> {
+        self.graph.target(edge)
+    }
+    pub fn source(&self, edge: EdgeIndex) -> Option<NodeIndex> {
+        self.graph.source(edge)
+    }
+    pub fn edge_ref(&self, edge: EdgeIndex) -> Option<EdgeRef<'_, (Option<I>, BracketSet<K>), L>> {
+        self.graph.edge_ref(edge)
+    }
+    pub fn node_ref(&self, node: NodeIndex) -> Option<NodeRef<'_, L>> {
+        self.graph.node_ref(node)
+    }
+    pub fn nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
+        self.graph.nodes()
+    }
+    pub fn edges(&self) -> impl Iterator<Item = EdgeIndex> + '_ {
+        self.graph.edges()
+    }
+    pub fn edges_from(&self, node: NodeIndex) -> impl Iterator<Item = EdgeIndex> + '_ {
+        self.graph.edges_from(node)
+    }
+    pub fn edges_to(&self, node: NodeIndex) -> impl Iterator<Item = EdgeIndex> + '_ {
+        self.graph.edges_to(node)
+    }
+
+    pub fn new_unchecked(graph: Graph<L, (Option<I>, BracketSet<K>)>) -> Self {
+        Self { graph }
     }
 
     pub fn is_in_core(&self, path: &PathRef, w: usize, d: usize) -> Result<bool, LGraphError<K>>
@@ -195,12 +243,11 @@ impl<L, I, K> LGraph<L, I, K> {
         }
 
         let mut cur_stack: BracketStack<K> = BracketStack::default();
-        let mut node_cycles = HashMap::from([((self.graph.source(path[0]), cur_stack.clone()), 0)]);
+        let mut node_cycles = HashMap::from([((self.source(path[0]), cur_stack.clone()), 0)]);
 
         for edge in path {
             cur_stack.try_accept(
-                self.graph
-                    .item(*edge)
+                self.item(*edge)
                     .ok_or_else(|| LGraphError::InvalidPath(path.clone()))?
                     .1
                     .clone(),
@@ -210,7 +257,7 @@ impl<L, I, K> LGraph<L, I, K> {
                 return Ok(false);
             };
 
-            let cur_node = self.graph.target(*edge);
+            let cur_node = self.target(*edge);
             let node_cycles_count = node_cycles
                 .entry((cur_node, cur_stack.clone()))
                 .and_modify(|node_cycles_count| *node_cycles_count += 1)
@@ -239,22 +286,18 @@ impl<L, I, K> LGraph<L, I, K> {
                 Some(t) => t,
                 None => break,
             };
-            if self.graph.is_end_node(node) && brackets.completed() {
+            if self.is_end_node(node) && brackets.completed() {
                 results.push(path.clone());
             }
 
-            for edge in self.graph.edges_from(node) {
+            for edge in self.edges_from(node) {
                 if let Some(new_brackets) =
-                    brackets.accept_and_copy(self.graph.item(edge).unwrap().1.clone())
+                    brackets.accept_and_copy(self.item(edge).unwrap().1.clone())
                 {
                     let new_path = path.clone().push(edge);
 
                     if self.is_in_core(&new_path, w, d).unwrap() {
-                        state_stack.push_front((
-                            new_path,
-                            self.graph.target(edge).unwrap(),
-                            new_brackets,
-                        ))
+                        state_stack.push_front((new_path, self.target(edge).unwrap(), new_brackets))
                     }
                 }
             }
@@ -267,7 +310,7 @@ impl<L, I, K> LGraph<L, I, K> {
     where
         I: Eq,
     {
-        if let Some(edge) = self.graph.edge_ref(e) {
+        if let Some(edge) = self.edge_ref(e) {
             if edge.item().0.as_ref() == item {
                 return true;
             }
