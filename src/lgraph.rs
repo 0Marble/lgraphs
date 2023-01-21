@@ -2,9 +2,10 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     fmt::Debug,
     hash::Hash,
+    ops::Index,
 };
 
-use crate::graph::{EdgeIndex, EdgeRef, Graph, NodeIndex, NodeRef, PathRef};
+use crate::graph::{EdgeIndex, EdgeRef, Graph, NodeIndex, NodeRef};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Bracket<K> {
@@ -175,16 +176,18 @@ impl<K> BracketStack<K> {
 }
 
 #[derive(Debug, Clone)]
-pub struct LGraph<L, I, K> {
-    graph: Graph<L, (Option<I>, BracketSet<K>)>,
+pub struct LGraph<N, I, K> {
+    graph: Graph<N, (Option<I>, BracketSet<K>)>,
+    start_node: NodeIndex,
+    end_nodes: HashSet<NodeIndex>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LGraphError<K> {
     StackError(BracketStackError<K>),
-    InvalidPath(PathRef),
     NoWayToContinue,
     UnbalancedBrackets,
+    InvalidEdge(EdgeIndex),
 }
 impl<K> From<BracketStackError<K>> for LGraphError<K> {
     fn from(e: BracketStackError<K>) -> Self {
@@ -192,18 +195,90 @@ impl<K> From<BracketStackError<K>> for LGraphError<K> {
     }
 }
 
-impl<L, I, K> LGraph<L, I, K> {
+#[derive(Debug)]
+pub struct PathRef<'a, N, I, K> {
+    graph: &'a LGraph<N, I, K>,
+    edges: Vec<EdgeIndex>,
+}
+
+impl<'a, N, I, K> PathRef<'a, N, I, K> {
+    pub fn new(graph: &'a LGraph<N, I, K>, edges: impl IntoIterator<Item = EdgeIndex>) -> Self {
+        Self {
+            edges: edges.into_iter().collect(),
+            graph,
+        }
+    }
+
+    pub fn empty(&self) -> bool {
+        self.edges.is_empty()
+    }
+
+    pub fn edges<'b>(&'b self) -> Edges<'b, 'a, N, I, K> {
+        Edges { path: self, cur: 0 }
+    }
+
+    fn push(mut self, edge: EdgeIndex) -> PathRef<'a, N, I, K> {
+        self.edges.push(edge);
+        self
+    }
+}
+
+pub struct Edges<'a, 'b, N, I, K> {
+    path: &'a PathRef<'b, N, I, K>,
+    cur: usize,
+}
+impl<'a, 'b, N, I, K> Iterator for Edges<'a, 'b, N, I, K> {
+    type Item = EdgeIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.path.edges.get(self.cur).map(|e| {
+            self.cur += 1;
+            *e
+        })
+    }
+}
+
+impl<'a, N, I, K> Index<usize> for PathRef<'a, N, I, K> {
+    type Output = EdgeIndex;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.edges[index]
+    }
+}
+
+impl<'a, N, I, K> Clone for PathRef<'a, N, I, K> {
+    fn clone(&self) -> Self {
+        Self {
+            graph: self.graph,
+            edges: self.edges.clone(),
+        }
+    }
+}
+
+impl<'a, N, I, K> Hash for PathRef<'a, N, I, K> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.edges.hash(state);
+    }
+}
+impl<'a, N, I, K> PartialEq for PathRef<'a, N, I, K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.edges == other.edges
+    }
+}
+impl<'a, N, I, K> Eq for PathRef<'a, N, I, K> {}
+
+impl<N, I, K> LGraph<N, I, K> {
     pub fn start_node(&self) -> NodeIndex {
-        self.graph.start_nodes().into_iter().next().unwrap()
+        self.start_node
     }
     pub fn end_nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
-        self.graph.end_nodes()
+        self.end_nodes.iter().cloned()
     }
     pub fn item(&self, edge: EdgeIndex) -> Option<&(Option<I>, BracketSet<K>)> {
         self.graph.item(edge)
     }
-    pub fn label(&self, node: NodeIndex) -> Option<&L> {
-        self.graph.label(node)
+    pub fn node(&self, node: NodeIndex) -> Option<&N> {
+        self.graph.node(node)
     }
     pub fn target(&self, edge: EdgeIndex) -> Option<NodeIndex> {
         self.graph.target(edge)
@@ -211,10 +286,10 @@ impl<L, I, K> LGraph<L, I, K> {
     pub fn source(&self, edge: EdgeIndex) -> Option<NodeIndex> {
         self.graph.source(edge)
     }
-    pub fn edge_ref(&self, edge: EdgeIndex) -> Option<EdgeRef<'_, (Option<I>, BracketSet<K>), L>> {
+    pub fn edge_ref(&self, edge: EdgeIndex) -> Option<EdgeRef<'_, N, (Option<I>, BracketSet<K>)>> {
         self.graph.edge_ref(edge)
     }
-    pub fn node_ref(&self, node: NodeIndex) -> Option<NodeRef<'_, L>> {
+    pub fn node_ref(&self, node: NodeIndex) -> Option<NodeRef<'_, N>> {
         self.graph.node_ref(node)
     }
     pub fn nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
@@ -226,15 +301,49 @@ impl<L, I, K> LGraph<L, I, K> {
     pub fn edges_from(&self, node: NodeIndex) -> impl Iterator<Item = EdgeIndex> + '_ {
         self.graph.edges_from(node)
     }
-    pub fn edges_to(&self, node: NodeIndex) -> impl Iterator<Item = EdgeIndex> + '_ {
-        self.graph.edges_to(node)
+    pub fn is_end_node(&self, node: NodeIndex) -> bool {
+        self.end_nodes.contains(&node)
+    }
+    pub fn is_start_node(&self, node: NodeIndex) -> bool {
+        self.start_node == node
     }
 
-    pub fn new_unchecked(graph: Graph<L, (Option<I>, BracketSet<K>)>) -> Self {
-        Self { graph }
+    pub fn new_unchecked(
+        graph: Graph<N, (Option<I>, BracketSet<K>)>,
+        start: N,
+        end: impl IntoIterator<Item = N>,
+    ) -> Self
+    where
+        N: Eq,
+    {
+        Self {
+            start_node: graph
+                .nodes()
+                .flat_map(|n| graph.node_ref(n))
+                .find(|n| n.contents().eq(&start))
+                .map(|n| n.index())
+                .unwrap(),
+            end_nodes: end
+                .into_iter()
+                .map(|node| {
+                    graph
+                        .nodes()
+                        .flat_map(|n| graph.node_ref(n))
+                        .find(|n| n.contents().eq(&node))
+                        .map(|n| n.index())
+                        .unwrap()
+                })
+                .collect(),
+            graph,
+        }
     }
 
-    pub fn is_in_core(&self, path: &PathRef, w: usize, d: usize) -> Result<bool, LGraphError<K>>
+    pub fn is_in_core(
+        &self,
+        path: &PathRef<N, I, K>,
+        w: usize,
+        d: usize,
+    ) -> Result<bool, LGraphError<K>>
     where
         K: Clone + Eq + Hash,
     {
@@ -245,10 +354,10 @@ impl<L, I, K> LGraph<L, I, K> {
         let mut cur_stack: BracketStack<K> = BracketStack::default();
         let mut node_cycles = HashMap::from([((self.source(path[0]), cur_stack.clone()), 0)]);
 
-        for edge in path {
+        for edge in path.edges() {
             cur_stack.try_accept(
-                self.item(*edge)
-                    .ok_or_else(|| LGraphError::InvalidPath(path.clone()))?
+                self.item(edge)
+                    .ok_or(LGraphError::InvalidEdge(edge))?
                     .1
                     .clone(),
             )?;
@@ -257,7 +366,7 @@ impl<L, I, K> LGraph<L, I, K> {
                 return Ok(false);
             };
 
-            let cur_node = self.target(*edge);
+            let cur_node = self.target(edge);
             let node_cycles_count = node_cycles
                 .entry((cur_node, cur_stack.clone()))
                 .and_modify(|node_cycles_count| *node_cycles_count += 1)
@@ -270,12 +379,12 @@ impl<L, I, K> LGraph<L, I, K> {
         Ok(true)
     }
 
-    pub fn core(&self, w: usize, d: usize) -> Vec<PathRef>
+    pub fn core(&self, w: usize, d: usize) -> Vec<PathRef<'_, N, I, K>>
     where
         K: Eq + Hash + Clone + Debug,
     {
         let mut state_stack = VecDeque::from([(
-            PathRef::default(),
+            PathRef::new(self, []),
             self.start_node(),
             BracketStack::<K>::default(),
         )]);
@@ -322,7 +431,7 @@ impl<L, I, K> LGraph<L, I, K> {
     pub fn traverse_iter<IT>(
         &self,
         items: impl IntoIterator<Item = I, IntoIter = IT>,
-    ) -> LgraphTraverse<'_, L, K, I, IT>
+    ) -> LgraphTraverse<'_, N, K, I, IT>
     where
         IT: Iterator<Item = I>,
     {
@@ -338,20 +447,16 @@ impl<L, I, K> LGraph<L, I, K> {
         }
     }
 
-    pub fn traverse(&self, items: impl IntoIterator<Item = I>) -> Result<PathRef, LGraphError<K>>
+    pub fn traverse(
+        &self,
+        items: impl IntoIterator<Item = I>,
+    ) -> Result<PathRef<N, I, K>, LGraphError<K>>
     where
         I: Eq,
         K: Eq + Hash + Clone,
     {
         let path = self.traverse_iter(items).collect::<Result<Vec<_>, _>>()?;
-        Ok(PathRef::new(path))
-    }
-
-    pub fn is_end_node(&self, node: NodeIndex) -> bool {
-        self.graph.is_end_node(node)
-    }
-    pub fn is_start_node(&self, node: NodeIndex) -> bool {
-        self.graph.is_start_node(node)
+        Ok(PathRef::new(self, path))
     }
 }
 
@@ -420,102 +525,67 @@ where
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
-    use crate::graph::{testing_parser::TestingParser, Edge, EdgeIndex, Node};
 
-    #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-    pub enum TestingBracket {
-        Square,
-    }
+    fn example() -> LGraph<char, char, char> {
+        let g = Graph::from_builder()
+            .add_named_edge((
+                '1',
+                (Some('a'), BracketSet::new([Bracket::new('[', 1, true)])),
+                '1',
+            ))
+            .add_named_edge((
+                '1',
+                (Some('d'), BracketSet::new([Bracket::new('[', 2, true)])),
+                '2',
+            ))
+            .add_named_edge((
+                '2',
+                (Some('b'), BracketSet::new([Bracket::new('[', 2, false)])),
+                '2',
+            ))
+            .add_named_edge((
+                '2',
+                (Some('c'), BracketSet::new([Bracket::new('[', 3, true)])),
+                '2',
+            ))
+            .add_named_edge((
+                '2',
+                (Some('d'), BracketSet::new([Bracket::new('[', 3, false)])),
+                '3',
+            ))
+            .add_named_edge((
+                '3',
+                (Some('a'), BracketSet::new([Bracket::new('[', 1, false)])),
+                '3',
+            ))
+            .build();
 
-    impl TestingParser<(Option<char>, BracketSet<TestingBracket>), char> {
-        pub fn example() -> Self {
-            Self::new(
-                [
-                    Edge::new(
-                        0,
-                        0,
-                        (
-                            Some('a'),
-                            BracketSet::new([Bracket::new(TestingBracket::Square, 1, true)]),
-                        ),
-                    ),
-                    Edge::new(
-                        0,
-                        1,
-                        (
-                            Some('d'),
-                            BracketSet::new([Bracket::new(TestingBracket::Square, 2, true)]),
-                        ),
-                    ),
-                    Edge::new(
-                        1,
-                        1,
-                        (
-                            Some('b'),
-                            BracketSet::new([Bracket::new(TestingBracket::Square, 2, false)]),
-                        ),
-                    ),
-                    Edge::new(
-                        1,
-                        1,
-                        (
-                            Some('c'),
-                            BracketSet::new([Bracket::new(TestingBracket::Square, 3, true)]),
-                        ),
-                    ),
-                    Edge::new(
-                        1,
-                        2,
-                        (
-                            Some('d'),
-                            BracketSet::new([Bracket::new(TestingBracket::Square, 3, false)]),
-                        ),
-                    ),
-                    Edge::new(
-                        2,
-                        2,
-                        (
-                            Some('a'),
-                            BracketSet::new([Bracket::new(TestingBracket::Square, 1, false)]),
-                        ),
-                    ),
-                ],
-                [Node::new('1'), Node::new('2'), Node::new('3')],
-                [0],
-                [2],
-            )
-        }
+        LGraph::new_unchecked(g, '1', ['3'])
     }
 
     #[test]
     fn in_core() {
-        let g = LGraph {
-            graph: Graph::from_parser(&mut TestingParser::example()).expect("Parse Error"),
-        };
+        let g = example();
         let p0 = PathRef::new(
+            &g,
             [0, 1, 2, 3, 4, 5]
                 .into_iter()
-                .map(EdgeIndex::new)
-                .collect::<Vec<_>>(),
+                .flat_map(|i| g.edges().nth(i)),
         );
         assert!(g.is_in_core(&p0, 1, 1).expect("Error"));
         assert!(g.is_in_core(&p0, 1, 2).expect("Error"));
 
-        let p1 = PathRef::new(
-            [1, 2, 3, 4]
-                .into_iter()
-                .map(EdgeIndex::new)
-                .collect::<Vec<_>>(),
-        );
+        let p1 = PathRef::new(&g, [1, 2, 3, 4].into_iter().flat_map(|i| g.edges().nth(i)));
         assert!(g.is_in_core(&p1, 1, 1).expect("Error"));
         assert!(g.is_in_core(&p1, 1, 2).expect("Error"));
 
         let p2 = PathRef::new(
+            &g,
             [0, 0, 1, 2, 3, 4, 5, 5]
                 .into_iter()
-                .map(EdgeIndex::new)
-                .collect::<Vec<_>>(),
+                .flat_map(|i| g.edges().nth(i)),
         );
         assert!(!g.is_in_core(&p2, 1, 1).expect("Error"));
         assert!(g.is_in_core(&p2, 1, 2).expect("Error"));
@@ -523,29 +593,23 @@ mod tests {
 
     #[test]
     fn core() {
-        let g = LGraph::new_unchecked(Graph::from_parser(&mut TestingParser::example()).unwrap());
+        let g = example();
         let core11 = HashSet::from_iter(g.core(1, 1).into_iter());
         let core12 = HashSet::from_iter(g.core(1, 2).into_iter());
 
         let p0 = PathRef::new(
-            [1, 2, 3, 4]
-                .into_iter()
-                .map(EdgeIndex::new)
-                .collect::<Vec<_>>(),
-        );
-        let p1 = PathRef::new(
+            &g,
             [0, 1, 2, 3, 4, 5]
                 .into_iter()
-                .map(EdgeIndex::new)
-                .collect::<Vec<_>>(),
+                .flat_map(|i| g.edges().nth(i)),
         );
+        let p1 = PathRef::new(&g, [1, 2, 3, 4].into_iter().flat_map(|i| g.edges().nth(i)));
         let p2 = PathRef::new(
+            &g,
             [0, 0, 1, 2, 3, 4, 5, 5]
                 .into_iter()
-                .map(EdgeIndex::new)
-                .collect::<Vec<_>>(),
+                .flat_map(|i| g.edges().nth(i)),
         );
-
         let actual_core11 = HashSet::from([p0.clone(), p1.clone()]);
         let actual_core12 = HashSet::from([p0, p1, p2]);
 
@@ -555,13 +619,13 @@ mod tests {
 
     #[test]
     fn traverse() {
-        let g = LGraph::new_unchecked(Graph::from_parser(&mut TestingParser::example()).unwrap());
+        let g = example();
         let s = "aadbcdaa";
         let p = PathRef::new(
+            &g,
             [0, 0, 1, 2, 3, 4, 5, 5]
                 .into_iter()
-                .map(EdgeIndex::new)
-                .collect::<Vec<_>>(),
+                .flat_map(|i| g.edges().nth(i)),
         );
 
         assert_eq!(g.traverse(s.chars()), Ok(p));

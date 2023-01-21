@@ -1,384 +1,474 @@
-use std::{collections::HashSet, hash::Hash, ops::Index};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Edge<I> {
-    from: usize,
-    to: usize,
-    item: I,
-}
-
-impl<I> Edge<I> {
-    pub fn new(from: usize, to: usize, item: I) -> Self {
-        Self { from, to, item }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Node<L> {
-    label: L,
-}
-
-impl<L> Node<L> {
-    pub fn new(label: L) -> Self {
-        Self { label }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Graph<L, I> {
-    edges: Vec<Edge<I>>,
-    nodes: Vec<Node<L>>,
-    start_nodes: HashSet<usize>,
-    end_nodes: HashSet<usize>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct NodeIndex {
-    index: usize,
-}
-
-impl NodeIndex {
-    pub fn new(index: usize) -> Self {
-        Self { index }
-    }
-}
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EdgeIndex {
     index: usize,
 }
 
 impl EdgeIndex {
-    pub fn new(index: usize) -> Self {
+    fn new(index: usize) -> Self {
         Self { index }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
-pub struct PathRef {
-    edges: Vec<EdgeIndex>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct NodeIndex {
+    index: usize,
 }
 
-impl PathRef {
-    pub fn new(edges: impl Into<Vec<EdgeIndex>>) -> Self {
+impl NodeIndex {
+    fn new(index: usize) -> Self {
+        Self { index }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EdgeRef<'a, N, I> {
+    index: EdgeIndex,
+    source_index: NodeIndex,
+    target_index: NodeIndex,
+    item: &'a I,
+    source_ref: &'a N,
+    target_ref: &'a N,
+}
+
+impl<'a, N, I> EdgeRef<'a, N, I> {
+    fn new(
+        index: EdgeIndex,
+        source_index: NodeIndex,
+        target_index: NodeIndex,
+        item: &'a I,
+        source_ref: &'a N,
+        target_ref: &'a N,
+    ) -> Self {
         Self {
-            edges: edges.into(),
+            index,
+            source_index,
+            target_index,
+            item,
+            source_ref,
+            target_ref,
         }
     }
-    pub fn empty(&self) -> bool {
-        self.edges.is_empty()
+
+    pub fn index(&self) -> EdgeIndex {
+        self.index
     }
-    pub fn push(mut self, edge: EdgeIndex) -> Self {
-        self.edges.push(edge);
-        self
+    pub fn target_index(&self) -> NodeIndex {
+        self.target_index
     }
-}
-impl Index<usize> for PathRef {
-    type Output = EdgeIndex;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.edges[index]
-    }
-}
-impl IntoIterator for PathRef {
-    type Item = EdgeIndex;
-
-    type IntoIter = std::vec::IntoIter<EdgeIndex>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.edges.into_iter()
-    }
-}
-impl<'a> IntoIterator for &'a PathRef {
-    type Item = &'a EdgeIndex;
-
-    type IntoIter = std::slice::Iter<'a, EdgeIndex>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.edges.iter()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct EdgeRef<'a, I, L> {
-    index: usize,
-    from_index: usize,
-    to_index: usize,
-    from: &'a Node<L>,
-    to: &'a Node<L>,
-    item: &'a I,
-}
-
-impl<'a, I, L> EdgeRef<'a, I, L> {
-    pub fn source(&self) -> &Node<L> {
-        self.from
-    }
-    pub fn target(&self) -> &Node<L> {
-        self.to
+    pub fn source_index(&self) -> NodeIndex {
+        self.source_index
     }
     pub fn item(&self) -> &'a I {
         self.item
     }
-    pub fn index(&self) -> EdgeIndex {
-        EdgeIndex { index: self.index }
+    pub fn source(&self) -> &'a N {
+        self.source_ref
     }
-    pub fn source_index(&self) -> NodeIndex {
-        NodeIndex {
-            index: self.from_index,
-        }
+    pub fn target(&self) -> &'a N {
+        self.target_ref
     }
-    pub fn target_index(&self) -> NodeIndex {
-        NodeIndex {
-            index: self.to_index,
-        }
-    }
-}
-pub struct NodeRef<'a, L> {
-    index: usize,
-    label: &'a L,
 }
 
-impl<'a, L> NodeRef<'a, L> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeRef<'a, N> {
+    index: NodeIndex,
+    node_ref: &'a N,
+}
+
+impl<'a, N> NodeRef<'a, N> {
+    fn new(index: NodeIndex, node_ref: &'a N) -> Self {
+        Self { index, node_ref }
+    }
+    pub fn contents(&self) -> &N {
+        self.node_ref
+    }
     pub fn index(&self) -> NodeIndex {
-        NodeIndex { index: self.index }
-    }
-    pub fn label(&self) -> &L {
-        self.label
+        self.index
     }
 }
 
-impl<L, I> Graph<L, I> {
-    pub fn item(&self, edge: EdgeIndex) -> Option<&I> {
-        self.edges.get(edge.index).map(|e| &e.item)
-    }
-    pub fn label(&self, node: NodeIndex) -> Option<&L> {
-        self.nodes.get(node.index).map(|n| &n.label)
-    }
-    pub fn target(&self, edge: EdgeIndex) -> Option<NodeIndex> {
-        self.edges.get(edge.index).map(|e| e.to).map(NodeIndex::new)
-    }
-    pub fn source(&self, edge: EdgeIndex) -> Option<NodeIndex> {
-        self.edges
-            .get(edge.index)
-            .map(|e| e.from)
-            .map(NodeIndex::new)
-    }
-    pub fn edge_ref(&self, edge: EdgeIndex) -> Option<EdgeRef<'_, I, L>> {
-        self.edges.get(edge.index).map(|e| EdgeRef {
-            from: &self.nodes[e.from],
-            to: &self.nodes[e.to],
-            item: &e.item,
-            index: edge.index,
-            from_index: e.from,
-            to_index: e.to,
-        })
-    }
-    pub fn node_ref(&self, node: NodeIndex) -> Option<NodeRef<'_, L>> {
-        self.nodes.get(node.index).map(|n| NodeRef {
-            index: node.index,
-            label: &n.label,
-        })
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InternalEdge<I> {
+    source: usize,
+    target: usize,
+    item: I,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Graph<N, I> {
+    edges: Vec<InternalEdge<I>>,
+    nodes: Vec<N>,
+}
+
+impl<N, I> Graph<N, I>
+where
+    N: Eq,
+{
+    pub fn from_builder() -> GraphBuilder<N, I> {
+        GraphBuilder {
+            edges: vec![],
+            nodes: vec![],
+        }
     }
 
-    pub fn nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
-        self.nodes
+    pub fn to_builder(self) -> GraphBuilder<N, I> {
+        GraphBuilder {
+            edges: self.edges,
+            nodes: self.nodes,
+        }
+    }
+}
+
+pub struct GraphBuilder<N, I>
+where
+    N: Eq,
+{
+    edges: Vec<InternalEdge<I>>,
+    nodes: Vec<N>,
+}
+
+impl<N, I> GraphBuilder<N, I>
+where
+    N: Eq,
+{
+    pub fn clear(mut self) -> Self {
+        self.edges.clear();
+        self.nodes.clear();
+        self
+    }
+    pub fn add_named_edge(mut self, edge: (N, I, N)) -> Self {
+        let (source, item, target) = edge;
+        let source_index = self
+            .nodes
             .iter()
             .enumerate()
-            .map(|(i, _n)| NodeIndex::new(i))
-    }
-    pub fn edges(&self) -> impl Iterator<Item = EdgeIndex> + '_ {
-        self.edges
+            .find(|(_, n)| source.eq(n))
+            .map(|(i, _)| i)
+            .unwrap_or_else(|| {
+                self.nodes.push(source);
+                self.nodes.len() - 1
+            });
+        let target_index = self
+            .nodes
             .iter()
             .enumerate()
-            .map(|(i, _e)| EdgeIndex::new(i))
+            .find(|(_, n)| target.eq(n))
+            .map(|(i, _)| i)
+            .unwrap_or_else(|| {
+                self.nodes.push(target);
+                self.nodes.len() - 1
+            });
+        self.edges.push(InternalEdge {
+            source: source_index,
+            target: target_index,
+            item,
+        });
+
+        self
     }
-    pub fn edges_from(&self, node: NodeIndex) -> impl Iterator<Item = EdgeIndex> + '_ {
-        self.edges
+
+    pub fn add_node(mut self, node: N) -> Self {
+        let _ = self
+            .nodes
             .iter()
             .enumerate()
-            .filter(move |(_, e)| e.from == node.index)
-            .map(|(i, _e)| EdgeIndex::new(i))
+            .find(|(_, n)| node.eq(n))
+            .map(|(i, _)| i)
+            .unwrap_or_else(|| {
+                self.nodes.push(node);
+                self.nodes.len() - 1
+            });
+        self
     }
-    pub fn edges_to(&self, node: NodeIndex) -> impl Iterator<Item = EdgeIndex> + '_ {
-        self.edges
-            .iter()
-            .enumerate()
-            .filter(move |(_, e)| e.to == node.index)
-            .map(|(i, _e)| EdgeIndex::new(i))
+
+    pub fn build(self) -> Graph<N, I> {
+        Graph {
+            edges: self.edges,
+            nodes: self.nodes,
+        }
     }
-    pub fn start_nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
-        self.start_nodes.iter().map(|n| NodeIndex::new(*n))
+}
+
+impl<N, I> Graph<N, I> {
+    pub fn edges(&self) -> Edges<'_, N, I> {
+        Edges {
+            graph: self,
+            cur: 0,
+        }
     }
-    pub fn end_nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
-        self.end_nodes.iter().map(|n| NodeIndex::new(*n))
+    pub fn nodes(&self) -> Nodes<'_, N, I> {
+        Nodes {
+            graph: self,
+            cur: 0,
+        }
+    }
+    pub fn edges_from(&self, node: NodeIndex) -> EdgesFrom<'_, N, I> {
+        EdgesFrom {
+            graph: self,
+            next: 0,
+            source: node,
+        }
+    }
+    pub fn targets_of(&self, node: NodeIndex) -> TargetsOf<'_, N, I> {
+        TargetsOf {
+            graph: self,
+            next: 0,
+            source: node,
+        }
     }
     pub fn edges_from_with<'a, 'b>(
         &'a self,
         node: NodeIndex,
         item: &'b I,
-    ) -> impl Iterator<Item = EdgeIndex> + 'a
+    ) -> EdgesFromWith<'a, 'b, N, I>
     where
-        'b: 'a,
         I: Eq,
     {
-        self.edges_from(node)
-            .flat_map(|e| self.edge_ref(e))
-            .filter(move |e| e.item() == item)
-            .map(|e| e.index())
+        EdgesFromWith {
+            graph: self,
+            next: 0,
+            source: node,
+            item,
+        }
+    }
+    pub fn targets_of_with<'a, 'b>(
+        &'a self,
+        node: NodeIndex,
+        item: &'b I,
+    ) -> TargetsOfWith<'a, 'b, N, I>
+    where
+        I: Eq,
+    {
+        TargetsOfWith {
+            graph: self,
+            next: 0,
+            source: node,
+            item,
+        }
+    }
+    pub fn node_with(&self, content: &N) -> Option<NodeIndex>
+    where
+        N: Eq,
+    {
+        self.nodes()
+            .flat_map(|n| self.node_ref(n))
+            .find(|n| content.eq(n.contents()))
+            .map(|n| n.index())
     }
 
-    pub fn is_start_node(&self, node: NodeIndex) -> bool {
-        self.start_nodes.contains(&node.index)
+    pub fn edge_ref(&self, edge: EdgeIndex) -> Option<EdgeRef<'_, N, I>> {
+        self.edges.get(edge.index).map(|e| {
+            EdgeRef::new(
+                edge,
+                NodeIndex { index: e.source },
+                NodeIndex { index: e.target },
+                &e.item,
+                &self.nodes[e.source],
+                &self.nodes[e.target],
+            )
+        })
     }
-    pub fn is_end_node(&self, node: NodeIndex) -> bool {
-        self.end_nodes.contains(&node.index)
+    pub fn node_ref(&self, node: NodeIndex) -> Option<NodeRef<'_, N>> {
+        self.nodes
+            .get(node.index)
+            .map(|n| NodeRef::new(NodeIndex { index: node.index }, n))
+    }
+    pub fn item(&self, edge: EdgeIndex) -> Option<&I> {
+        self.edges.get(edge.index).map(|e| &e.item)
+    }
+    pub fn target(&self, edge: EdgeIndex) -> Option<NodeIndex> {
+        self.edges
+            .get(edge.index)
+            .map(|e| e.target)
+            .map(NodeIndex::new)
+    }
+    pub fn source(&self, edge: EdgeIndex) -> Option<NodeIndex> {
+        self.edges
+            .get(edge.index)
+            .map(|e| e.source)
+            .map(NodeIndex::new)
+    }
+    pub fn node(&self, node: NodeIndex) -> Option<&N> {
+        self.nodes.get(node.index)
+    }
+
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
     }
 }
 
-pub trait GraphParser {
-    type Label;
-    type Item;
-    type Error;
-
-    fn parse(&mut self) -> Result<Graph<Self::Label, Self::Item>, Self::Error>;
+pub struct Edges<'a, N, I> {
+    graph: &'a Graph<N, I>,
+    cur: usize,
 }
 
-impl<I, L> Graph<L, I> {
-    pub fn from_parser<P>(parser: &mut P) -> Result<Self, P::Error>
-    where
-        P: GraphParser<Label = L, Item = I>,
-    {
-        parser.parse()
-    }
-    pub fn from_edges(
-        edges: impl IntoIterator<Item = (Node<L>, I, Node<L>)>,
-        start_nodes: impl IntoIterator<Item = Node<L>>,
-        end_nodes: impl IntoIterator<Item = Node<L>>,
-    ) -> Self
-    where
-        L: Hash + Eq + PartialEq,
-    {
-        let mut nodes = vec![];
-        let mut converted_edges = vec![];
-        let mut start_nodes_set = HashSet::new();
-        let mut end_nodes_set = HashSet::new();
+impl<'a, N, I> Iterator for Edges<'a, N, I> {
+    type Item = EdgeIndex;
 
-        for (from, item, to) in edges.into_iter() {
-            let from_index = nodes
-                .iter()
-                .enumerate()
-                .find(|(_, n)| from.eq(n))
-                .map(|(i, _)| i);
-
-            let from_index = match from_index {
-                Some(i) => i,
-                None => {
-                    nodes.push(from);
-                    nodes.len() - 1
-                }
-            };
-            let to_index = nodes
-                .iter()
-                .enumerate()
-                .find(|(_, n)| to.eq(n))
-                .map(|(i, _)| i);
-            let to_index = match to_index {
-                Some(i) => i,
-                None => {
-                    nodes.push(to);
-                    nodes.len() - 1
-                }
-            };
-
-            converted_edges.push(Edge::new(from_index, to_index, item));
-        }
-
-        for node in start_nodes.into_iter() {
-            let index = nodes
-                .iter()
-                .enumerate()
-                .find(|(_, n)| node.eq(n))
-                .map(|(i, _)| i);
-            let index = match index {
-                Some(i) => i,
-                None => {
-                    nodes.push(node);
-                    nodes.len() - 1
-                }
-            };
-            start_nodes_set.insert(index);
-        }
-        for node in end_nodes.into_iter() {
-            let index = nodes
-                .iter()
-                .enumerate()
-                .find(|(_, n)| node.eq(n))
-                .map(|(i, _)| i);
-            let index = match index {
-                Some(i) => i,
-                None => {
-                    nodes.push(node);
-                    nodes.len() - 1
-                }
-            };
-            end_nodes_set.insert(index);
-        }
-
-        Self {
-            edges: converted_edges,
-            nodes,
-            start_nodes: start_nodes_set,
-            end_nodes: end_nodes_set,
-        }
-    }
-}
-
-#[cfg(test)]
-pub mod testing_parser {
-    use std::collections::HashSet;
-
-    use crate::graph::{Edge, Graph, Node};
-
-    use super::GraphParser;
-
-    pub struct TestingParser<I, L> {
-        edges: Vec<Edge<I>>,
-        nodes: Vec<Node<L>>,
-        start_nodes: HashSet<usize>,
-        end_nodes: HashSet<usize>,
-    }
-
-    impl<I, L> TestingParser<I, L> {
-        pub fn new(
-            edges: impl Into<Vec<Edge<I>>>,
-            nodes: impl Into<Vec<Node<L>>>,
-            start_nodes: impl Into<HashSet<usize>>,
-            end_nodes: impl Into<HashSet<usize>>,
-        ) -> Self {
-            Self {
-                edges: edges.into(),
-                nodes: nodes.into(),
-                start_nodes: start_nodes.into(),
-                end_nodes: end_nodes.into(),
-            }
-        }
-    }
-    impl<I, L> GraphParser for TestingParser<I, L>
-    where
-        I: Clone,
-        L: Clone,
-    {
-        type Label = L;
-        type Item = I;
-
-        type Error = ();
-
-        fn parse(&mut self) -> Result<crate::graph::Graph<Self::Label, Self::Item>, Self::Error> {
-            Ok(Graph {
-                edges: self.edges.clone(),
-                nodes: self.nodes.clone(),
-                start_nodes: self.start_nodes.clone(),
-                end_nodes: self.end_nodes.clone(),
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.graph.edges.len() > self.cur {
+            self.cur += 1;
+            Some(EdgeIndex {
+                index: self.cur - 1,
             })
+        } else {
+            None
         }
+    }
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        if self.graph.edges.len() > n {
+            self.cur = n + 1;
+            Some(EdgeIndex::new(n))
+        } else {
+            None
+        }
+    }
+}
+pub struct Nodes<'a, N, I> {
+    graph: &'a Graph<N, I>,
+    cur: usize,
+}
+
+impl<'a, N, I> Iterator for Nodes<'a, N, I> {
+    type Item = NodeIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.graph.nodes.len() > self.cur {
+            self.cur += 1;
+            Some(NodeIndex {
+                index: self.cur - 1,
+            })
+        } else {
+            None
+        }
+    }
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        if self.graph.nodes.len() > n {
+            self.cur = n + 1;
+            Some(NodeIndex::new(n))
+        } else {
+            None
+        }
+    }
+}
+pub struct EdgesFrom<'a, N, I> {
+    graph: &'a Graph<N, I>,
+    next: usize,
+    source: NodeIndex,
+}
+
+impl<'a, N, I> Iterator for EdgesFrom<'a, N, I> {
+    type Item = EdgeIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut i = self.next;
+        for edge in &self.graph.edges[self.next..] {
+            if edge.source == self.source.index {
+                self.next = i + 1;
+                return Some(EdgeIndex { index: i });
+            }
+            i += 1;
+        }
+
+        None
+    }
+}
+pub struct TargetsOf<'a, N, I> {
+    graph: &'a Graph<N, I>,
+    next: usize,
+    source: NodeIndex,
+}
+
+impl<'a, N, I> Iterator for TargetsOf<'a, N, I> {
+    type Item = NodeIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut i = self.next;
+        for edge in &self.graph.edges[self.next..] {
+            if edge.source == self.source.index {
+                self.next = i + 1;
+                return Some(NodeIndex { index: edge.target });
+            }
+            i += 1;
+        }
+
+        None
+    }
+}
+pub struct EdgesFromWith<'a, 'b, N, I> {
+    graph: &'a Graph<N, I>,
+    next: usize,
+    source: NodeIndex,
+    item: &'b I,
+}
+
+impl<'a, 'b, N, I> Iterator for EdgesFromWith<'a, 'b, N, I>
+where
+    I: Eq,
+{
+    type Item = EdgeIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut i = self.next;
+        for edge in &self.graph.edges[self.next..] {
+            if edge.source == self.source.index && &edge.item == self.item {
+                self.next = i + 1;
+                return Some(EdgeIndex { index: i });
+            }
+            i += 1;
+        }
+
+        None
+    }
+}
+pub struct TargetsOfWith<'a, 'b, N, I> {
+    graph: &'a Graph<N, I>,
+    next: usize,
+    source: NodeIndex,
+    item: &'b I,
+}
+
+impl<'a, 'b, N, I> Iterator for TargetsOfWith<'a, 'b, N, I>
+where
+    I: Eq,
+{
+    type Item = NodeIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut i = self.next;
+        for edge in &self.graph.edges[self.next..] {
+            if edge.source == self.source.index && &edge.item == self.item {
+                self.next = i + 1;
+                return Some(NodeIndex { index: edge.target });
+            }
+            i += 1;
+        }
+
+        None
+    }
+}
+
+pub struct NodesWith<'a, 'b, N, I> {
+    graph: &'a Graph<N, I>,
+    node: &'b N,
+    cur: usize,
+}
+impl<'a, 'b, N, I> Iterator for NodesWith<'a, 'b, N, I>
+where
+    N: Eq,
+{
+    type Item = NodeIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut i = self.cur;
+        for node in &self.graph.nodes[self.cur..] {
+            if self.node == node {
+                self.cur = i + 1;
+                return Some(NodeIndex { index: i });
+            }
+            i += 1;
+        }
+
+        None
     }
 }

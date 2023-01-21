@@ -4,58 +4,52 @@ use std::{
 };
 
 use crate::{
-    graph::{EdgeIndex, EdgeRef, Graph, Node, NodeIndex, NodeRef},
+    graph::{EdgeIndex, EdgeRef, Graph, NodeIndex, NodeRef},
     iters::{AllPairs, Subsets},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateMachine<L, I> {
     graph: Graph<L, I>,
+    start_node: NodeIndex,
+    end_nodes: HashSet<NodeIndex>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MultiStateNode<L>
-where
-    L: Eq + Hash,
-{
-    nodes: HashSet<Node<L>>,
-}
+impl<N, I> StateMachine<N, I> {
+    pub fn new(graph: Graph<N, I>, start_node: N, end_nodes: impl IntoIterator<Item = N>) -> Self
+    where
+        N: Eq + Clone,
+    {
+        let mut builder = graph.to_builder().add_node(start_node.clone());
+        let end_nodes = end_nodes.into_iter().collect::<Vec<_>>();
+        for end_node in end_nodes.iter() {
+            builder = builder.add_node(end_node.clone());
+        }
+        let graph = builder.build();
 
-impl<L> MultiStateNode<L>
-where
-    L: Eq + Hash,
-{
-    pub fn new(nodes: HashSet<Node<L>>) -> Self {
-        Self { nodes }
+        Self {
+            start_node: graph.node_with(&start_node).unwrap(),
+            end_nodes: end_nodes
+                .into_iter()
+                .flat_map(|node| graph.node_with(&node))
+                .collect(),
+            graph,
+        }
     }
-}
-
-#[allow(clippy::derive_hash_xor_eq)]
-impl<L> Hash for MultiStateNode<L>
-where
-    L: Eq + Hash,
-{
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.nodes.iter().for_each(|item| item.hash(state));
+    pub fn node_count(&self) -> usize {
+        self.graph.node_count()
     }
-}
-
-impl<L, I> StateMachine<L, I> {
-    pub fn new(graph: Graph<L, I>) -> Self {
-        Self { graph }
-    }
-
     pub fn start_node(&self) -> NodeIndex {
-        self.graph.start_nodes().into_iter().next().unwrap()
+        self.start_node
     }
     pub fn end_nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
-        self.graph.end_nodes()
+        self.end_nodes.iter().cloned()
     }
     pub fn item(&self, edge: EdgeIndex) -> Option<&I> {
         self.graph.item(edge)
     }
-    pub fn label(&self, node: NodeIndex) -> Option<&L> {
-        self.graph.label(node)
+    pub fn contents(&self, node: NodeIndex) -> Option<&N> {
+        self.graph.node(node)
     }
     pub fn target(&self, edge: EdgeIndex) -> Option<NodeIndex> {
         self.graph.target(edge)
@@ -63,10 +57,10 @@ impl<L, I> StateMachine<L, I> {
     pub fn source(&self, edge: EdgeIndex) -> Option<NodeIndex> {
         self.graph.source(edge)
     }
-    pub fn edge_ref(&self, edge: EdgeIndex) -> Option<EdgeRef<'_, I, L>> {
+    pub fn edge_ref(&self, edge: EdgeIndex) -> Option<EdgeRef<'_, N, I>> {
         self.graph.edge_ref(edge)
     }
-    pub fn node_ref(&self, node: NodeIndex) -> Option<NodeRef<'_, L>> {
+    pub fn node_ref(&self, node: NodeIndex) -> Option<NodeRef<'_, N>> {
         self.graph.node_ref(node)
     }
     pub fn nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
@@ -78,88 +72,74 @@ impl<L, I> StateMachine<L, I> {
     pub fn edges_from(&self, node: NodeIndex) -> impl Iterator<Item = EdgeIndex> + '_ {
         self.graph.edges_from(node)
     }
-    pub fn edges_to(&self, node: NodeIndex) -> impl Iterator<Item = EdgeIndex> + '_ {
-        self.graph.edges_to(node)
-    }
     pub fn edges_from_with<'a, 'b>(
         &'a self,
         node: NodeIndex,
         item: &'b I,
     ) -> impl Iterator<Item = EdgeIndex> + 'a
     where
-        'b: 'a,
         I: Eq,
+        'b: 'a,
     {
         self.graph.edges_from_with(node, item)
     }
-    pub fn is_end_node(&self, node: NodeIndex) -> bool {
-        self.graph.is_end_node(node)
+    fn is_end_node(&self, node: NodeIndex) -> bool {
+        self.end_nodes.contains(&node)
     }
 
-    pub fn determine(&self) -> StateMachine<MultiStateNode<L>, I>
+    fn convert<A>(node: A, conversion: &mut Vec<A>) -> usize
+    where
+        A: Eq,
+    {
+        conversion
+            .iter()
+            .enumerate()
+            .find(|(_, n)| node.eq(n))
+            .map(|(i, _)| i)
+            .unwrap_or_else(|| {
+                conversion.push(node);
+                conversion.len() - 1
+            })
+    }
+
+    pub fn determine(&self) -> (StateMachine<usize, I>, Vec<HashSet<NodeIndex>>)
     where
         I: Eq + Hash + Clone,
-        L: Eq + Hash + Clone,
     {
-        let mut new_edges = vec![];
+        let mut conversion: Vec<HashSet<NodeIndex>> = vec![];
+        let mut builder = Graph::from_builder();
         let mut end_nodes = HashSet::new();
 
-        for new_node in Subsets::new(self.nodes()) {
-            let mut edges: HashMap<&I, HashSet<NodeIndex>> = HashMap::new();
-            for node in &new_node {
-                for edge in self.edges_from(*node).flat_map(|e| self.edge_ref(e)) {
-                    edges
-                        .entry(edge.item())
-                        .or_default()
-                        .insert(edge.target_index());
-                }
+        for node in Subsets::new(self.nodes()).map(HashSet::from_iter) {
+            let mut edges: HashMap<I, HashSet<NodeIndex>> = HashMap::new();
+            let source = Self::convert(node, &mut conversion);
+            if conversion[source].intersection(&self.end_nodes).count() != 0 {
+                end_nodes.insert(source);
             }
+
+            for e in conversion[source]
+                .iter()
+                .flat_map(|n| self.edges_from(*n))
+                .flat_map(|e| self.edge_ref(e))
+            {
+                edges
+                    .entry(e.item().clone())
+                    .or_default()
+                    .insert(e.target_index());
+            }
+
             if !edges.is_empty() {
-                for (item, target) in edges {
-                    let source = Node::new(MultiStateNode::new(
-                        new_node
-                            .iter()
-                            .flat_map(|i| self.node_ref(*i))
-                            .map(|r| Node::new(r.label().clone()))
-                            .collect(),
-                    ));
-                    new_edges.push((
-                        source,
-                        item.clone(),
-                        Node::new(MultiStateNode::new(
-                            target
-                                .iter()
-                                .flat_map(|i| self.node_ref(*i))
-                                .map(|r| Node::new(r.label().clone()))
-                                .collect(),
-                        )),
-                    ));
-                }
-            }
-
-            for end_node in self.end_nodes() {
-                if new_node.contains(&end_node) {
-                    end_nodes.insert(Node::new(MultiStateNode::new(
-                        new_node
-                            .iter()
-                            .flat_map(|i| self.node_ref(*i))
-                            .map(|r| Node::new(r.label().clone()))
-                            .collect(),
-                    )));
+                for (item, target) in edges.into_iter() {
+                    let target = Self::convert(target, &mut conversion);
+                    builder = builder.add_named_edge((source, item, target));
                 }
             }
         }
 
-        StateMachine {
-            graph: Graph::from_edges(
-                new_edges,
-                HashSet::from([Node::new(MultiStateNode::new(HashSet::from_iter(
-                    self.node_ref(self.start_node())
-                        .map(|n| Node::new(n.label().clone())),
-                )))]),
-                end_nodes,
-            ),
-        }
+        let start_node = Self::convert(HashSet::from([self.start_node]), &mut conversion);
+        let g = builder.build();
+
+        (StateMachine::new(g, start_node, end_nodes), conversion)
     }
 
     pub fn is_determined(&self) -> bool
@@ -187,44 +167,44 @@ impl<L, I> StateMachine<L, I> {
         })
     }
 
-    pub fn reachable_from(&self, node: NodeIndex) -> ReachableFrom<'_, L, I> {
+    pub fn reachable_from(&self, node: NodeIndex) -> ReachableFrom<'_, N, I> {
         ReachableFrom::new(self, node)
     }
 
     pub fn remove_unreachable(&self) -> Self
     where
-        L: Clone + Eq + Hash,
+        N: Clone + Eq,
         I: Clone,
     {
-        let reachable = self
-            .reachable_from(self.start_node())
-            .collect::<HashSet<_>>();
+        let mut builder = Graph::from_builder();
+        let mut end_nodes = HashSet::new();
 
-        let mut new_edges = vec![];
-        for (from, to, item) in self
-            .graph
-            .edges()
-            .flat_map(|e| self.edge_ref(e))
-            .map(|e| (e.source_index(), e.target_index(), e))
-            .filter_map(|(a, b, e)| Some((self.node_ref(a)?, self.node_ref(b)?, e.item())))
-        {
-            if reachable.contains(&from.index()) && reachable.contains(&to.index()) {
-                new_edges.push((
-                    Node::new(from.label().clone()),
-                    item.clone(),
-                    Node::new(to.label().clone()),
-                ))
+        for reached in self.reachable_from(self.start_node()) {
+            for edge in self.edges_from(reached).flat_map(|e| self.edge_ref(e)) {
+                builder = builder.add_named_edge((
+                    edge.source().clone(),
+                    edge.item().clone(),
+                    edge.target().clone(),
+                ));
+
+                if self.is_end_node(edge.target_index()) {
+                    end_nodes.insert(edge.target_index());
+                }
+                if self.is_end_node(edge.source_index()) {
+                    end_nodes.insert(edge.source_index());
+                }
             }
         }
 
-        Self::new(Graph::from_edges(
-            new_edges,
-            self.node_ref(self.start_node())
-                .map(|n| Node::new(n.label().clone())),
-            reachable
-                .intersection(&HashSet::from_iter(self.end_nodes()))
-                .flat_map(|n| self.node_ref(*n).map(|n| Node::new(n.label().clone()))),
-        ))
+        let g = builder.build();
+
+        StateMachine::new(
+            g,
+            self.contents(self.start_node()).unwrap().clone(),
+            end_nodes
+                .into_iter()
+                .map(|n| self.contents(n).unwrap().clone()),
+        )
     }
 
     fn are_equivalent(&self, a: NodeIndex, b: NodeIndex, groups: &[HashSet<NodeIndex>]) -> bool {
@@ -261,8 +241,7 @@ impl<L, I> StateMachine<L, I> {
 
     fn next_eqivalence_group(&self, prev: &[HashSet<NodeIndex>]) -> Vec<HashSet<NodeIndex>>
     where
-        I: Clone + Eq + Hash,
-        L: Clone + Eq + Hash,
+        I: Eq,
     {
         let mut new_groups: Vec<HashSet<NodeIndex>> = vec![];
 
@@ -290,44 +269,62 @@ impl<L, I> StateMachine<L, I> {
         new_groups
     }
 
-    pub fn minimize(&self) -> Self
+    pub fn minimize(&self) -> (StateMachine<usize, I>, Vec<HashSet<NodeIndex>>)
     where
-        I: Clone + Eq + Hash,
-        L: Clone + Eq + Hash,
+        N: Clone + Eq,
+        I: Eq + Clone,
     {
-        let g = self.remove_unreachable();
-        let mut prev = vec![HashSet::new(), HashSet::new()];
-        for a in g.graph.nodes() {
-            if self.is_end_node(a) {
-                prev[1].insert(a);
-            } else {
-                prev[0].insert(a);
-            }
-        }
+        let s = self.remove_unreachable();
+        let mut prev_groups: Vec<HashSet<NodeIndex>> = vec![
+            HashSet::from_iter(s.nodes().filter(|n| s.is_end_node(*n))),
+            HashSet::from_iter(s.nodes().filter(|n| !s.is_end_node(*n))),
+        ];
 
-        for k in 1.. {
-            let cur = g.next_eqivalence_group(&prev);
-            if cur == prev {
+        loop {
+            let cur_groups = s.next_eqivalence_group(&prev_groups);
+            if cur_groups == prev_groups {
                 break;
             } else {
-                prev = cur;
+                prev_groups = cur_groups;
             }
         }
 
-        let mut new_edges = vec![];
-        for group in &prev {
-            let a = group.iter().next().unwrap();
+        let mut builder = Graph::from_builder();
+        let mut conversion = vec![];
 
-            for b in g.edges_from(*a).flat_map(|e| g.target(e)) {
-                for target_group in &prev {
-                    if target_group.contains(&b) {
-                        new_edges.push(())
-                    }
-                }
+        let mut start_node = 0;
+        for group in &prev_groups {
+            let source = Self::convert(group.clone(), &mut conversion);
+            if conversion[source].contains(&s.start_node) {
+                start_node = source;
+            }
+
+            for edge in s
+                .edges_from(*conversion[source].iter().next().unwrap())
+                .flat_map(|e| s.edge_ref(e))
+            {
+                let target_group = prev_groups
+                    .iter()
+                    .find(|g| g.contains(&edge.target_index()))
+                    .unwrap();
+                let target = Self::convert(target_group.clone(), &mut conversion);
+                builder = builder.add_named_edge((source, edge.item().clone(), target));
             }
         }
 
-        todo!()
+        let g = builder.build();
+        let end_nodes = s
+            .end_nodes()
+            .flat_map(|n| {
+                conversion
+                    .iter()
+                    .enumerate()
+                    .find(|(_, group)| group.contains(&n))
+                    .map(|(i, _)| i)
+            })
+            .collect::<Vec<_>>();
+
+        (StateMachine::new(g, start_node, end_nodes), conversion)
     }
 }
 
@@ -370,43 +367,70 @@ impl<'a, L, I> ReachableFrom<'a, L, I> {
 
 #[cfg(test)]
 mod tests {
-    use crate::graph::{testing_parser::TestingParser, Edge, Graph, Node};
+
+    use crate::graph::Graph;
 
     use super::StateMachine;
 
     #[test]
     fn determine() {
         let edges = [
-            Edge::new(0, 0, 1),
-            Edge::new(0, 0, 2),
-            Edge::new(0, 0, 3),
-            Edge::new(0, 1, 1),
-            Edge::new(0, 2, 2),
-            Edge::new(0, 3, 3),
-            Edge::new(1, 1, 1),
-            Edge::new(1, 1, 2),
-            Edge::new(1, 1, 3),
-            Edge::new(1, 4, 1),
-            Edge::new(2, 1, 1),
-            Edge::new(2, 1, 2),
-            Edge::new(2, 1, 3),
-            Edge::new(2, 4, 2),
-            Edge::new(3, 1, 1),
-            Edge::new(3, 1, 2),
-            Edge::new(3, 1, 3),
-            Edge::new(3, 4, 3),
+            (0, 1, 0),
+            (0, 2, 0),
+            (0, 3, 0),
+            (0, 1, 1),
+            (0, 2, 2),
+            (0, 3, 3),
+            (1, 1, 1),
+            (1, 2, 1),
+            (1, 3, 1),
+            (1, 1, 4),
+            (2, 1, 1),
+            (2, 2, 1),
+            (2, 3, 1),
+            (2, 2, 4),
+            (3, 1, 1),
+            (3, 2, 1),
+            (3, 3, 1),
+            (3, 3, 4),
         ];
-        let nodes = [
-            Node::new("q0".to_string()),
-            Node::new("q1".to_string()),
-            Node::new("q2".to_string()),
-            Node::new("q3".to_string()),
-            Node::new("qf".to_string()),
-        ];
-        let g = Graph::from_parser(&mut TestingParser::new(edges, nodes, [0], [4])).unwrap();
-        let s = StateMachine::new(g);
+        let mut builder = Graph::from_builder();
+        for edge in edges {
+            builder = builder.add_named_edge(edge);
+        }
+
+        let g = builder.build();
+        let s = StateMachine::new(g, 0, [4]);
+        let (determined, _) = s.determine();
 
         assert!(!s.is_determined());
-        assert!(s.determine().is_determined());
+        assert!(determined.is_determined());
+    }
+
+    #[test]
+    fn minimize() {
+        let edges = [
+            ('a', 0, 'b'),
+            ('a', 1, 'd'),
+            ('b', 0, 'b'),
+            ('b', 1, 'c'),
+            ('c', 0, 'd'),
+            ('d', 0, 'd'),
+            ('d', 1, 'e'),
+            ('e', 0, 'b'),
+            ('e', 1, 'c'),
+            ('c', 1, 'e'),
+            ('f', 0, 'c'),
+            ('f', 1, 'g'),
+            ('g', 0, 'f'),
+            ('g', 1, 'e'),
+        ];
+        let mut builder = Graph::from_builder();
+        for edge in edges {
+            builder = builder.add_named_edge(edge);
+        }
+        let s = StateMachine::new(builder.build(), 'a', ['c', 'e']);
+        let (minimized, _) = s.minimize();
+        assert_eq!(minimized.node_count(), 3);
     }
 }
