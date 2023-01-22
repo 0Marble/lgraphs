@@ -1,3 +1,9 @@
+use std::{
+    collections::{HashSet, VecDeque},
+    hash::Hash,
+    ops::Index,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EdgeIndex {
     index: usize,
@@ -189,6 +195,64 @@ where
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MangledNode<N> {
+    Node(N),
+    Mangled(usize),
+}
+
+pub struct MangledBuilder<N, I>
+where
+    N: Eq,
+{
+    builder: GraphBuilder<MangledNode<N>, I>,
+    mangled_count: usize,
+}
+
+impl<N, I> MangledBuilder<N, I>
+where
+    N: Eq,
+{
+    pub fn new(builder: GraphBuilder<N, I>) -> Self {
+        let builder = GraphBuilder {
+            edges: builder.edges,
+            nodes: builder.nodes.into_iter().map(MangledNode::Node).collect(),
+        };
+        Self {
+            mangled_count: 0,
+            builder,
+        }
+    }
+
+    pub fn add_path(mut self, start: N, path_items: impl IntoIterator<Item = I>, end: N) -> Self {
+        let mut it = path_items.into_iter().peekable();
+
+        let mut new_mangled_count = self.mangled_count;
+        let mut prev = MangledNode::Node(start);
+
+        while let Some(item) = it.next() {
+            let next = if it.peek().is_some() {
+                new_mangled_count += 1;
+                MangledNode::Mangled(new_mangled_count - 1)
+            } else {
+                let next = MangledNode::Node(end);
+                self.builder = self.builder.add_named_edge((prev, item, next));
+                break;
+            };
+            self.builder = self.builder.add_named_edge((prev, item, next));
+
+            prev = MangledNode::Mangled(new_mangled_count - 1);
+        }
+
+        self.mangled_count = new_mangled_count;
+        self
+    }
+
+    pub fn build(self) -> Graph<MangledNode<N>, I> {
+        self.builder.build()
+    }
+}
+
 impl<N, I> Graph<N, I> {
     pub fn edges(&self) -> Edges<'_, N, I> {
         Edges {
@@ -254,6 +318,9 @@ impl<N, I> Graph<N, I> {
             .flat_map(|n| self.node_ref(n))
             .find(|n| content.eq(n.contents()))
             .map(|n| n.index())
+    }
+    pub fn reachable_from(&self, node: NodeIndex) -> ReachableFrom<'_, N, I> {
+        ReachableFrom::new(self, node)
     }
 
     pub fn edge_ref(&self, edge: EdgeIndex) -> Option<EdgeRef<'_, N, I>> {
@@ -472,3 +539,133 @@ where
         None
     }
 }
+
+pub struct ReachableFrom<'a, L, I> {
+    graph: &'a Graph<L, I>,
+    stack: VecDeque<(PathRef<'a, L, I>, NodeIndex)>,
+    reached: HashSet<NodeIndex>,
+}
+
+impl<'a, L, I> ReachableFrom<'a, L, I> {
+    pub fn new(graph: &'a Graph<L, I>, node: NodeIndex) -> Self {
+        Self {
+            stack: VecDeque::from([(PathRef::new(graph, []), node)]),
+            graph,
+            reached: HashSet::from([node]),
+        }
+    }
+}
+
+impl<'a, L, I> Iterator for ReachableFrom<'a, L, I> {
+    type Item = (PathRef<'a, L, I>, NodeIndex);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (path, node) = self.stack.pop_front()?;
+
+        for edge in self
+            .graph
+            .edges_from(node)
+            .flat_map(|edge| self.graph.edge_ref(edge))
+        {
+            if self.reached.insert(edge.target_index()) {
+                self.stack
+                    .push_front((path.clone().push(edge.index()), edge.target_index()));
+            }
+        }
+
+        Some((path, node))
+    }
+}
+
+#[derive(Debug)]
+pub struct PathRef<'a, N, I> {
+    graph: &'a Graph<N, I>,
+    edges: Vec<EdgeIndex>,
+}
+
+impl<'a, N, I> PathRef<'a, N, I> {
+    pub fn new(graph: &'a Graph<N, I>, edges: impl IntoIterator<Item = EdgeIndex>) -> Self {
+        Self {
+            edges: edges.into_iter().collect(),
+            graph,
+        }
+    }
+
+    pub fn empty(&self) -> bool {
+        self.edges.is_empty()
+    }
+
+    pub fn edges<'b>(&'b self) -> PathRefEdges<'b, 'a, N, I> {
+        PathRefEdges { path: self, cur: 0 }
+    }
+    pub fn items<'b>(&'b self) -> Items<'b, 'a, N, I> {
+        Items { path: self, cur: 0 }
+    }
+
+    pub fn push(mut self, edge: EdgeIndex) -> PathRef<'a, N, I> {
+        self.edges.push(edge);
+        self
+    }
+    pub fn graph(&self) -> &'a Graph<N, I> {
+        self.graph
+    }
+}
+
+pub struct PathRefEdges<'a, 'b, N, I> {
+    path: &'a PathRef<'b, N, I>,
+    cur: usize,
+}
+impl<'a, 'b, N, I> Iterator for PathRefEdges<'a, 'b, N, I> {
+    type Item = EdgeIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.path.edges.get(self.cur).map(|e| {
+            self.cur += 1;
+            *e
+        })
+    }
+}
+pub struct Items<'a, 'b, N, I> {
+    path: &'a PathRef<'b, N, I>,
+    cur: usize,
+}
+impl<'a, 'b, N, I> Iterator for Items<'a, 'b, N, I> {
+    type Item = &'b I;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.path
+            .edges
+            .get(self.cur)
+            .and_then(|e| self.path.graph.edge_ref(*e))
+            .map(|e| e.item())
+    }
+}
+
+impl<'a, N, I> Index<usize> for PathRef<'a, N, I> {
+    type Output = EdgeIndex;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.edges[index]
+    }
+}
+
+impl<'a, N, I> Clone for PathRef<'a, N, I> {
+    fn clone(&self) -> Self {
+        Self {
+            graph: self.graph,
+            edges: self.edges.clone(),
+        }
+    }
+}
+
+impl<'a, N, I> Hash for PathRef<'a, N, I> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.edges.hash(state);
+    }
+}
+impl<'a, N, I> PartialEq for PathRef<'a, N, I> {
+    fn eq(&self, other: &Self) -> bool {
+        self.edges == other.edges
+    }
+}
+impl<'a, N, I> Eq for PathRef<'a, N, I> {}

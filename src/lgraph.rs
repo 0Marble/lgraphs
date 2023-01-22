@@ -5,7 +5,13 @@ use std::{
     ops::Index,
 };
 
-use crate::graph::{EdgeIndex, EdgeRef, Graph, NodeIndex, NodeRef};
+use crate::{
+    graph::{
+        EdgeIndex, EdgeRef, Graph, GraphBuilder, MangledBuilder, MangledNode, NodeIndex, NodeRef,
+        PathRef, ReachableFrom,
+    },
+    state_machine,
+};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Bracket<K> {
@@ -65,7 +71,7 @@ impl<'a, K> IntoIterator for &'a BracketSet<K> {
 
 #[derive(Clone, Debug)]
 pub struct BracketStack<K> {
-    stacks: HashMap<K, VecDeque<usize>>,
+    stacks: HashMap<K, Vec<usize>>,
 }
 
 impl<K> Hash for BracketStack<K>
@@ -118,7 +124,7 @@ impl<K> BracketStack<K> {
         for bracket in set {
             if let Some(stack) = self.stacks.get(&bracket.kind) {
                 if !bracket.is_opening {
-                    match stack.front() {
+                    match stack.last() {
                         Some(i) if *i != bracket.index => {
                             return Err(BracketStackError::Expected(Bracket::new(
                                 bracket.kind.clone(),
@@ -143,9 +149,9 @@ impl<K> BracketStack<K> {
         for bracket in set.into_iter() {
             let stack = self.stacks.entry(bracket.kind).or_default();
             if bracket.is_opening {
-                stack.push_front(bracket.index)
+                stack.push(bracket.index)
             } else {
-                stack.pop_front();
+                stack.pop();
             }
         }
     }
@@ -160,18 +166,27 @@ impl<K> BracketStack<K> {
         Ok(())
     }
 
-    fn completed(&self) -> bool {
+    pub fn empty(&self) -> bool {
         self.stacks.iter().all(|(_, stack)| stack.is_empty())
     }
 
-    fn accept_and_copy(&self, set: BracketSet<K>) -> Option<Self>
+    pub fn remove_suffix(&self, b: &BracketStack<K>) -> Option<BracketStack<K>>
     where
         K: Eq + Hash + Clone,
     {
-        self.can_accept(&set).ok()?;
-        let mut new_stack = self.clone();
-        new_stack.accept(set);
-        Some(new_stack)
+        let mut new_stacks = HashMap::new();
+        for (kind, stack) in &self.stacks {
+            let suffix_stack = b.stacks.get(kind)?;
+            let prefix = stack.strip_suffix(suffix_stack.as_slice())?;
+            new_stacks.insert(kind, prefix);
+        }
+
+        Some(BracketStack {
+            stacks: new_stacks
+                .into_iter()
+                .map(|(kind, stack)| (kind.clone(), stack.to_vec()))
+                .collect(),
+        })
     }
 }
 
@@ -188,84 +203,13 @@ pub enum LGraphError<K> {
     NoWayToContinue,
     UnbalancedBrackets,
     InvalidEdge(EdgeIndex),
+    NoNodesGiven,
 }
 impl<K> From<BracketStackError<K>> for LGraphError<K> {
     fn from(e: BracketStackError<K>) -> Self {
         Self::StackError(e)
     }
 }
-
-#[derive(Debug)]
-pub struct PathRef<'a, N, I, K> {
-    graph: &'a LGraph<N, I, K>,
-    edges: Vec<EdgeIndex>,
-}
-
-impl<'a, N, I, K> PathRef<'a, N, I, K> {
-    pub fn new(graph: &'a LGraph<N, I, K>, edges: impl IntoIterator<Item = EdgeIndex>) -> Self {
-        Self {
-            edges: edges.into_iter().collect(),
-            graph,
-        }
-    }
-
-    pub fn empty(&self) -> bool {
-        self.edges.is_empty()
-    }
-
-    pub fn edges<'b>(&'b self) -> Edges<'b, 'a, N, I, K> {
-        Edges { path: self, cur: 0 }
-    }
-
-    fn push(mut self, edge: EdgeIndex) -> PathRef<'a, N, I, K> {
-        self.edges.push(edge);
-        self
-    }
-}
-
-pub struct Edges<'a, 'b, N, I, K> {
-    path: &'a PathRef<'b, N, I, K>,
-    cur: usize,
-}
-impl<'a, 'b, N, I, K> Iterator for Edges<'a, 'b, N, I, K> {
-    type Item = EdgeIndex;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.path.edges.get(self.cur).map(|e| {
-            self.cur += 1;
-            *e
-        })
-    }
-}
-
-impl<'a, N, I, K> Index<usize> for PathRef<'a, N, I, K> {
-    type Output = EdgeIndex;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.edges[index]
-    }
-}
-
-impl<'a, N, I, K> Clone for PathRef<'a, N, I, K> {
-    fn clone(&self) -> Self {
-        Self {
-            graph: self.graph,
-            edges: self.edges.clone(),
-        }
-    }
-}
-
-impl<'a, N, I, K> Hash for PathRef<'a, N, I, K> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.edges.hash(state);
-    }
-}
-impl<'a, N, I, K> PartialEq for PathRef<'a, N, I, K> {
-    fn eq(&self, other: &Self) -> bool {
-        self.edges == other.edges
-    }
-}
-impl<'a, N, I, K> Eq for PathRef<'a, N, I, K> {}
 
 impl<N, I, K> LGraph<N, I, K> {
     pub fn start_node(&self) -> NodeIndex {
@@ -289,6 +233,12 @@ impl<N, I, K> LGraph<N, I, K> {
     pub fn edge_ref(&self, edge: EdgeIndex) -> Option<EdgeRef<'_, N, (Option<I>, BracketSet<K>)>> {
         self.graph.edge_ref(edge)
     }
+    pub fn node_with(&self, node: &N) -> Option<NodeIndex>
+    where
+        N: Eq,
+    {
+        self.graph.node_with(node)
+    }
     pub fn node_ref(&self, node: NodeIndex) -> Option<NodeRef<'_, N>> {
         self.graph.node_ref(node)
     }
@@ -306,6 +256,9 @@ impl<N, I, K> LGraph<N, I, K> {
     }
     pub fn is_start_node(&self, node: NodeIndex) -> bool {
         self.start_node == node
+    }
+    pub fn reachable_from(&self, node: NodeIndex) -> ReachableFrom<N, (Option<I>, BracketSet<K>)> {
+        self.graph.reachable_from(node)
     }
 
     pub fn new_unchecked(
@@ -340,7 +293,7 @@ impl<N, I, K> LGraph<N, I, K> {
 
     pub fn is_in_core(
         &self,
-        path: &PathRef<N, I, K>,
+        path: &PathRef<N, (Option<I>, BracketSet<K>)>,
         w: usize,
         d: usize,
     ) -> Result<bool, LGraphError<K>>
@@ -379,12 +332,12 @@ impl<N, I, K> LGraph<N, I, K> {
         Ok(true)
     }
 
-    pub fn core(&self, w: usize, d: usize) -> Vec<PathRef<'_, N, I, K>>
+    pub fn core(&self, w: usize, d: usize) -> Vec<PathRef<'_, N, (Option<I>, BracketSet<K>)>>
     where
         K: Eq + Hash + Clone + Debug,
     {
         let mut state_stack = VecDeque::from([(
-            PathRef::new(self, []),
+            PathRef::new(&self.graph, []),
             self.start_node(),
             BracketStack::<K>::default(),
         )]);
@@ -395,14 +348,17 @@ impl<N, I, K> LGraph<N, I, K> {
                 Some(t) => t,
                 None => break,
             };
-            if self.is_end_node(node) && brackets.completed() {
+            if self.is_end_node(node) && brackets.empty() {
                 results.push(path.clone());
             }
 
             for edge in self.edges_from(node) {
-                if let Some(new_brackets) =
-                    brackets.accept_and_copy(self.item(edge).unwrap().1.clone())
+                if brackets
+                    .can_accept(&self.item(edge).unwrap().1)
+                    .map_or(false, |_| true)
                 {
+                    let mut new_brackets = brackets.clone();
+                    new_brackets.accept(self.item(edge).unwrap().1.clone());
                     let new_path = path.clone().push(edge);
 
                     if self.is_in_core(&new_path, w, d).unwrap() {
@@ -450,13 +406,111 @@ impl<N, I, K> LGraph<N, I, K> {
     pub fn traverse(
         &self,
         items: impl IntoIterator<Item = I>,
-    ) -> Result<PathRef<N, I, K>, LGraphError<K>>
+    ) -> Result<PathRef<N, (Option<I>, BracketSet<K>)>, LGraphError<K>>
     where
         I: Eq,
         K: Eq + Hash + Clone,
     {
         let path = self.traverse_iter(items).collect::<Result<Vec<_>, _>>()?;
-        Ok(PathRef::new(self, path))
+        Ok(PathRef::new(&self.graph, path))
+    }
+
+    fn graph_from_paths<'a>(
+        paths: impl IntoIterator<Item = PathRef<'a, N, (Option<I>, BracketSet<K>)>>,
+    ) -> Result<LGraph<(NodeIndex, BracketStack<K>), &'a I, K>, LGraphError<K>>
+    where
+        N: 'a + Eq,
+        I: 'a + Clone,
+        K: 'a + Eq + Hash + Clone,
+    {
+        let mut builder = Graph::from_builder();
+        let mut start_node = None;
+        let mut end_nodes = HashSet::new();
+        for path in paths.into_iter() {
+            if path.empty() {
+                continue;
+            }
+
+            let first_edge = path
+                .graph()
+                .edge_ref(path[0])
+                .ok_or(LGraphError::InvalidEdge(path[0]))?;
+            let mut stack = BracketStack::default();
+            let mut prev_node = (first_edge.source_index(), stack.clone());
+            start_node = Some(prev_node.clone());
+
+            for edge in path.edges().flat_map(|e| path.graph().edge_ref(e)) {
+                stack.try_accept(edge.item().1.clone())?;
+                let next_node = (edge.target_index(), stack.clone());
+                let item = edge.item().0.as_ref();
+                let brackets = edge.item().1.clone();
+                builder = builder.add_named_edge((prev_node, (item, brackets), next_node.clone()));
+                prev_node = next_node.clone();
+            }
+            end_nodes.insert(prev_node);
+        }
+
+        let start_node = if let Some(n) = start_node {
+            n
+        } else {
+            return Err(LGraphError::NoNodesGiven);
+        };
+
+        Ok(LGraph::new_unchecked(
+            builder.build(),
+            start_node,
+            end_nodes,
+        ))
+    }
+
+    pub fn normal_form(
+        &self,
+    ) -> Result<LGraph<MangledNode<(NodeIndex, BracketStack<K>)>, &I, K>, LGraphError<K>>
+    where
+        N: Eq,
+        I: Clone,
+        K: Eq + Hash + Clone + Debug,
+    {
+        let core11 = Self::graph_from_paths(self.core(1, 1))?;
+        let core12 = Self::graph_from_paths(self.core(1, 2))?;
+        let mut builder = MangledBuilder::new(core11.clone().graph.to_builder());
+
+        for node in core12.nodes().flat_map(|n| core12.node_ref(n)) {
+            let (q, ab) = node.contents();
+            for (path, next_node) in core12
+                .reachable_from(node.index())
+                .flat_map(|(path, n)| Some((path, core12.node_ref(n)?)))
+            {
+                let (next, b) = next_node.contents();
+                if next != q {
+                    continue;
+                }
+
+                let a = if let Some(a) = ab.remove_suffix(b) {
+                    a
+                } else {
+                    continue;
+                };
+
+                let combined_node = (*next, a);
+                if core11.node_with(&combined_node).is_none() {
+                    continue;
+                }
+                builder =
+                    builder.add_path(combined_node.clone(), path.items().cloned(), combined_node);
+            }
+        }
+
+        Ok(LGraph::new_unchecked(
+            builder.build(),
+            MangledNode::Node(core11.node_ref(self.start_node).unwrap().contents().clone()),
+            core11
+                .end_nodes()
+                .flat_map(|n| core11.node_ref(n))
+                .chain(core12.end_nodes().flat_map(|n| core11.node_ref(n)))
+                .map(|n| n.contents().clone())
+                .map(MangledNode::Node),
+        ))
     }
 }
 
@@ -514,7 +568,7 @@ where
         self.cur_node = chosen_edge.target_index();
         if self.graph.is_end_node(self.cur_node) && self.cur_item.is_none() {
             self.finished = true;
-            if !self.bracket_stack.completed() {
+            if !self.bracket_stack.empty() {
                 return Some(Err(LGraphError::UnbalancedBrackets));
             }
         }
@@ -569,7 +623,7 @@ mod tests {
     fn in_core() {
         let g = example();
         let p0 = PathRef::new(
-            &g,
+            &g.graph,
             [0, 1, 2, 3, 4, 5]
                 .into_iter()
                 .flat_map(|i| g.edges().nth(i)),
@@ -577,12 +631,15 @@ mod tests {
         assert!(g.is_in_core(&p0, 1, 1).expect("Error"));
         assert!(g.is_in_core(&p0, 1, 2).expect("Error"));
 
-        let p1 = PathRef::new(&g, [1, 2, 3, 4].into_iter().flat_map(|i| g.edges().nth(i)));
+        let p1 = PathRef::new(
+            &g.graph,
+            [1, 2, 3, 4].into_iter().flat_map(|i| g.edges().nth(i)),
+        );
         assert!(g.is_in_core(&p1, 1, 1).expect("Error"));
         assert!(g.is_in_core(&p1, 1, 2).expect("Error"));
 
         let p2 = PathRef::new(
-            &g,
+            &g.graph,
             [0, 0, 1, 2, 3, 4, 5, 5]
                 .into_iter()
                 .flat_map(|i| g.edges().nth(i)),
@@ -598,14 +655,17 @@ mod tests {
         let core12 = HashSet::from_iter(g.core(1, 2).into_iter());
 
         let p0 = PathRef::new(
-            &g,
+            &g.graph,
             [0, 1, 2, 3, 4, 5]
                 .into_iter()
                 .flat_map(|i| g.edges().nth(i)),
         );
-        let p1 = PathRef::new(&g, [1, 2, 3, 4].into_iter().flat_map(|i| g.edges().nth(i)));
+        let p1 = PathRef::new(
+            &g.graph,
+            [1, 2, 3, 4].into_iter().flat_map(|i| g.edges().nth(i)),
+        );
         let p2 = PathRef::new(
-            &g,
+            &g.graph,
             [0, 0, 1, 2, 3, 4, 5, 5]
                 .into_iter()
                 .flat_map(|i| g.edges().nth(i)),
@@ -622,7 +682,7 @@ mod tests {
         let g = example();
         let s = "aadbcdaa";
         let p = PathRef::new(
-            &g,
+            &g.graph,
             [0, 0, 1, 2, 3, 4, 5, 5]
                 .into_iter()
                 .flat_map(|i| g.edges().nth(i)),
@@ -632,5 +692,13 @@ mod tests {
         assert!(g.traverse("dbcd".chars()).is_ok());
         assert!(g.traverse("adbcda".chars()).is_ok());
         assert!(g.traverse("aadbcda".chars()).is_err());
+    }
+
+    #[test]
+    fn regular() {
+        let g = example();
+        let normal = g.normal_form().unwrap();
+        dbg!(normal);
+        assert!(false);
     }
 }

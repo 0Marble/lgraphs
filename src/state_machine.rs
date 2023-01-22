@@ -1,10 +1,12 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
     hash::Hash,
 };
 
 use crate::{
-    graph::{EdgeIndex, EdgeRef, Graph, NodeIndex, NodeRef},
+    graph::{
+        EdgeIndex, EdgeRef, EdgesFrom, EdgesFromWith, Graph, NodeIndex, NodeRef, ReachableFrom,
+    },
     iters::{AllPairs, Subsets},
 };
 
@@ -69,22 +71,25 @@ impl<N, I> StateMachine<N, I> {
     pub fn edges(&self) -> impl Iterator<Item = EdgeIndex> + '_ {
         self.graph.edges()
     }
-    pub fn edges_from(&self, node: NodeIndex) -> impl Iterator<Item = EdgeIndex> + '_ {
+    pub fn edges_from(&self, node: NodeIndex) -> EdgesFrom<N, I> {
         self.graph.edges_from(node)
     }
     pub fn edges_from_with<'a, 'b>(
         &'a self,
         node: NodeIndex,
         item: &'b I,
-    ) -> impl Iterator<Item = EdgeIndex> + 'a
+    ) -> EdgesFromWith<'a, 'b, N, I>
     where
         I: Eq,
         'b: 'a,
     {
         self.graph.edges_from_with(node, item)
     }
-    fn is_end_node(&self, node: NodeIndex) -> bool {
+    pub fn is_end_node(&self, node: NodeIndex) -> bool {
         self.end_nodes.contains(&node)
+    }
+    pub fn reachable_from(&self, node: NodeIndex) -> ReachableFrom<N, I> {
+        self.graph.reachable_from(node)
     }
 
     fn convert<A>(node: A, conversion: &mut Vec<A>) -> usize
@@ -167,10 +172,6 @@ impl<N, I> StateMachine<N, I> {
         })
     }
 
-    pub fn reachable_from(&self, node: NodeIndex) -> ReachableFrom<'_, N, I> {
-        ReachableFrom::new(self, node)
-    }
-
     pub fn remove_unreachable(&self) -> Self
     where
         N: Clone + Eq,
@@ -179,7 +180,7 @@ impl<N, I> StateMachine<N, I> {
         let mut builder = Graph::from_builder();
         let mut end_nodes = HashSet::new();
 
-        for reached in self.reachable_from(self.start_node()) {
+        for (_, reached) in self.reachable_from(self.start_node()) {
             for edge in self.edges_from(reached).flat_map(|e| self.edge_ref(e)) {
                 builder = builder.add_named_edge((
                     edge.source().clone(),
@@ -247,9 +248,8 @@ impl<N, I> StateMachine<N, I> {
 
         let mut section_start = 0;
         for group in prev {
-            let mut pushed = false;
-
             for a in group {
+                let mut pushed = false;
                 for new_group in &mut new_groups[section_start..] {
                     let b = new_group.iter().next().unwrap();
                     if self.are_next_equivalent(*a, *b, prev) {
@@ -292,12 +292,8 @@ impl<N, I> StateMachine<N, I> {
         let mut builder = Graph::from_builder();
         let mut conversion = vec![];
 
-        let mut start_node = 0;
         for group in &prev_groups {
             let source = Self::convert(group.clone(), &mut conversion);
-            if conversion[source].contains(&s.start_node) {
-                start_node = source;
-            }
 
             for edge in s
                 .edges_from(*conversion[source].iter().next().unwrap())
@@ -312,6 +308,12 @@ impl<N, I> StateMachine<N, I> {
             }
         }
 
+        let start_node = conversion
+            .iter()
+            .enumerate()
+            .find(|(_, group)| group.contains(&s.start_node))
+            .map(|(i, _)| i)
+            .unwrap();
         let g = builder.build();
         let end_nodes = s
             .end_nodes()
@@ -325,43 +327,6 @@ impl<N, I> StateMachine<N, I> {
             .collect::<Vec<_>>();
 
         (StateMachine::new(g, start_node, end_nodes), conversion)
-    }
-}
-
-pub struct ReachableFrom<'a, L, I> {
-    graph: &'a StateMachine<L, I>,
-    stack: VecDeque<NodeIndex>,
-    reached: HashSet<NodeIndex>,
-}
-
-impl<'a, L, I> Iterator for ReachableFrom<'a, L, I> {
-    type Item = NodeIndex;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let node = self.stack.pop_front()?;
-
-        for target in self
-            .graph
-            .graph
-            .edges_from(node)
-            .flat_map(|edge| self.graph.target(edge))
-        {
-            if self.reached.insert(target) {
-                self.stack.push_front(target);
-            }
-        }
-
-        Some(node)
-    }
-}
-
-impl<'a, L, I> ReachableFrom<'a, L, I> {
-    pub fn new(graph: &'a StateMachine<L, I>, node: NodeIndex) -> Self {
-        Self {
-            graph,
-            stack: VecDeque::from([node]),
-            reached: HashSet::from([node]),
-        }
     }
 }
 
@@ -430,7 +395,7 @@ mod tests {
             builder = builder.add_named_edge(edge);
         }
         let s = StateMachine::new(builder.build(), 'a', ['c', 'e']);
-        let (minimized, _) = s.minimize();
+        let (minimized, conversion) = s.minimize();
         assert_eq!(minimized.node_count(), 3);
     }
 }

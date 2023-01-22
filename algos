@@ -115,33 +115,31 @@ fn graph_from_paths(g: Graph, p: [Path]):
     ...
 
 /*
-    next step is connecting g11 core(1, 1) and g12 core(1, 2) graphs
-    not sure how to do it...
+    at the start, g = core11.
+    in the core12 we need to find pairs of nodes (q, ab) - b1 c1 - ... - bn cn -> (q, b)  
+    from them, we construct a new node (q, a), and check if its in the core11.
+    if so, we add an edge (q, a) - b1 c1 - ... - bn cn -> (q, a) to g.
+
+    at the end return g.
 */
 fn normal_form(g: Graph):
-    core11 = g.core(1, 1)
-    g11 = g.graph_from_paths(core11)
-    core12 = g.core(1, 2)
+    core11 = g.graph_from_paths(g.core(1, 1))
+    core12 = g.graph_from_paths(g.core(1, 2))        
+    res = MagledGraph(g)
 
-    edges = g11.edges()
-    for path in core12:
-        /* 
-            1. find all enclosed systems s in path
-            2. lets say s = A -a[-> A[ -a[-> .. -b]-> B[ -b]-> B
-                (first two are same old label, same token, same brackets, last two too)
-            3. that means, we need to check if core11 graph has a path
-                s1 = A -a[-> .. -b]-> B
-                (basically the same, the difference is its 2 nodes shorter, and 1 less nested)
-            4. if so, we can add 2 edges to core11:
-                A -> a[ -> A
-                B -> b] -> B
-        */
-        for s in g.enclosed_parts(path): 
-            // how does it work with multiple systems of brackets...
-            n = g.path_to_nodes(s)
-            if n[0].name != n[1].name || n[-1].name != n[-2].name: continue
-            if s[0] != s[1] || s[-2] != s[-1]: continue
-            if !s[0].brackets.are_completed_by(s[-1].brackets): continue
+    for (q, ab) in core12.nodes():
+        for (path, (node, b)) in core12.reachable_from((q, ab)):
+            if node != q || ab.has_suffix(b):
+                continue
+
+            a = ab.remove_suffix(b)
+            if !core11.has_node((q, a)):
+                continue
+            
+            res.add_mangled_path((q, a), path.items(), (q, a))
+    return res
+
+
 
 /*
     than, we create the regular image (a finite state machine, created by just removing brackets)
