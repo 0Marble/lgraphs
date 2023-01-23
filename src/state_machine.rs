@@ -338,6 +338,47 @@ impl<N, I> StateMachine<N, I> {
     }
 }
 
+impl<N, I> StateMachine<N, Option<I>> {
+    pub fn remove_nones(&self) -> StateMachine<N, I>
+    where
+        N: Eq + Clone,
+        I: Eq + Clone,
+    {
+        let mut builder = Graph::from_builder();
+        let mut end_nodes = vec![];
+
+        for node in self.nodes().flat_map(|n| self.node_ref(n)) {
+            for (item, target) in self
+                .lambda_closure(node.index())
+                .map(|n| {
+                    if self.is_end_node(n) {
+                        end_nodes.push(node.contents().clone());
+                    }
+
+                    n
+                })
+                .flat_map(|n| self.edges_from(n))
+                .flat_map(|e| self.edge_ref(e))
+                .filter_map(|e| e.item().as_ref().map(|item| (item, e.target())))
+            {
+                builder = builder.add_edge(node.contents().clone(), item.clone(), target.clone());
+            }
+        }
+
+        StateMachine::new(
+            builder.build(),
+            self.contents(self.start_node).unwrap().clone(),
+            end_nodes,
+        )
+    }
+
+    pub fn lambda_closure(&self, node: NodeIndex) -> impl Iterator<Item = NodeIndex> + '_ {
+        self.reachable_from(node)
+            .filter(|(path, _)| path.items().all(Option::is_none))
+            .map(|(_, node)| node)
+    }
+}
+
 #[cfg(test)]
 mod tests {
 

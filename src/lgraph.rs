@@ -5,10 +5,7 @@ use std::{
 };
 
 use crate::{
-    graph::{
-        EdgeIndex, EdgeRef, Graph, MangledBuilder, MangledNode, NodeIndex, NodeRef, PathRef,
-        ReachableFrom,
-    },
+    graph::{EdgeIndex, EdgeRef, Graph, NodeIndex, NodeRef, PathRef, ReachableFrom},
     state_machine::StateMachine,
 };
 
@@ -193,6 +190,25 @@ impl<K> BracketStack<K> {
         for (kind, stack) in &self.stacks {
             let suffix_stack = b.stacks.get(kind)?;
             let prefix = stack.strip_suffix(suffix_stack.as_slice())?;
+            new_stacks.insert(kind, prefix);
+        }
+
+        Some(BracketStack {
+            stacks: new_stacks
+                .into_iter()
+                .map(|(kind, stack)| (kind.clone(), stack.to_vec()))
+                .collect(),
+        })
+    }
+
+    fn remove_prefix(&self, b: &BracketStack<K>) -> Option<BracketStack<K>>
+    where
+        K: Eq + Hash + Clone,
+    {
+        let mut new_stacks = HashMap::new();
+        for (kind, stack) in &self.stacks {
+            let suffix_stack = b.stacks.get(kind)?;
+            let prefix = stack.strip_prefix(suffix_stack.as_slice())?;
             new_stacks.insert(kind, prefix);
         }
 
@@ -486,9 +502,7 @@ where
         ))
     }
 
-    pub fn normal_form(
-        &self,
-    ) -> Result<LGraph<MangledNode<(NodeIndex, BracketStack<K>)>, &I, K>, LGraphError<K>>
+    pub fn normal_form(&self) -> Result<LGraph<(NodeIndex, BracketStack<K>), &I, K>, LGraphError<K>>
     where
         N: Eq + Debug,
         I: Clone + Eq + Debug,
@@ -498,50 +512,60 @@ where
         let core12 = match Self::graph_from_paths(
             self.core(1, 2).into_iter().filter(|p| !core11.contains(p)),
         ) {
-            Ok(g) => Some(g),
-            Err(LGraphError::NoNodesGiven) => None,
+            Ok(g) => g,
+            Err(LGraphError::NoNodesGiven) => return Self::graph_from_paths(core11),
             Err(e) => return Err(e),
         };
         let core11 = Self::graph_from_paths(core11)?;
-        let mut builder = MangledBuilder::new(core11.clone().graph.to_builder());
+        let mut builder = core11.clone().graph.to_builder();
 
-        if let Some(core12) = &core12 {
-            for node in core12
-                .nodes()
-                .flat_map(|n| core12.node_ref(n))
-                .filter(|n| !n.contents().1.empty())
+        for core11_node in core11.nodes().flat_map(|n| core11.node_ref(n)) {
+            let a_node = if let Some(node) = core12
+                .node_with(core11_node.contents())
+                .and_then(|n| core12.node_ref(n))
             {
-                let (q, ab) = node.contents();
+                node
+            } else {
+                continue;
+            };
 
-                for (path, next_node) in core12
-                    .reachable_from(node.index())
-                    .filter(|(_, n)| n != &node.index())
-                    .flat_map(|(path, n)| Some((path, core12.node_ref(n)?)))
-                    .filter(|(_, n)| !n.contents().1.empty())
+            let (q, a) = core11_node.contents();
+
+            for ab_node in core12.nodes().flat_map(|n| core12.node_ref(n)) {
+                let (name, ab) = ab_node.contents();
+                if name != q {
+                    continue;
+                }
+                let b = if let Some(b) = ab.remove_prefix(a) {
+                    b
+                } else {
+                    continue;
+                };
+
+                if b.max_depth() > 1 {
+                    // TODO Perhaps we should find paths from (q, a) to (q, ab) and use them for a loop..
+                    continue;
+                }
+
+                if let Some(edge) = core12
+                    .edges_from(ab_node.index())
+                    .flat_map(|e| core12.edge_ref(e))
+                    .find(|e| e.target_index() == a_node.index())
                 {
-                    let (next, b) = next_node.contents();
-                    if next != q {
-                        continue;
-                    }
-
-                    let a = if let Some(a) = ab.remove_suffix(b) {
-                        a
-                    } else if let Some(a) = b.remove_suffix(ab) {
-                        a
-                    } else {
-                        continue;
-                    };
-
-                    let combined_node = (*next, a);
-                    if core11.node_with(&combined_node).is_none() {
-                        continue;
-                    }
-                    println!("{:?} ~ {:?} = {:?}", (q, ab), (q, b), combined_node);
-
-                    builder = builder.add_path(
-                        combined_node.clone(),
-                        path.items().cloned(),
-                        combined_node,
+                    builder = builder.add_edge(
+                        core11_node.contents().clone(),
+                        edge.item().clone(),
+                        core11_node.contents().clone(),
+                    );
+                } else if let Some(edge) = core12
+                    .edges_from(a_node.index())
+                    .flat_map(|e| core12.edge_ref(e))
+                    .find(|e| e.target_index() == ab_node.index())
+                {
+                    builder = builder.add_edge(
+                        core11_node.contents().clone(),
+                        edge.item().clone(),
+                        core11_node.contents().clone(),
                     );
                 }
             }
@@ -549,17 +573,12 @@ where
 
         Ok(LGraph::new_unchecked(
             builder.build(),
-            MangledNode::Node(core11.node_ref(self.start_node).unwrap().contents().clone()),
+            core11.node_ref(self.start_node).unwrap().contents().clone(),
             core11
                 .end_nodes()
                 .flat_map(|n| core11.node_ref(n))
-                .chain(
-                    core12
-                        .iter()
-                        .flat_map(|c| c.end_nodes().flat_map(|n| c.node_ref(n))),
-                )
-                .map(|n| n.contents().clone())
-                .map(MangledNode::Node),
+                .chain(core12.end_nodes().flat_map(|n| core12.node_ref(n)))
+                .map(|n| n.contents().clone()),
         ))
     }
 
@@ -819,6 +838,30 @@ mod tests {
         s
     }
 
+    fn display_minimized(g: &StateMachine<usize, &&char>) -> String {
+        let mut s = String::new();
+        use std::fmt::Write;
+        writeln!(s, "starting: {};", g.contents(g.start_node()).unwrap()).unwrap();
+        write!(s, "ending: [").unwrap();
+        for end_node in g.end_nodes().flat_map(|n| g.contents(n)) {
+            write!(s, "{}, ", end_node).unwrap();
+        }
+        writeln!(s, "]").unwrap();
+
+        for edge in g.edges().flat_map(|e| g.edge_ref(e)) {
+            writeln!(
+                s,
+                "\t{} => {} => {};",
+                edge.source(),
+                edge.item(),
+                edge.target()
+            )
+            .unwrap();
+        }
+
+        s
+    }
+
     fn display_core(g: &LGraph<(NodeIndex, BracketStack<char>), &char, char>) -> String {
         let mut s = String::new();
         use std::fmt::Write;
@@ -879,23 +922,11 @@ mod tests {
         let g = example_regular();
         let normal = g.normal_form().unwrap();
         let img = normal.regular_image();
-        let (determined, _) = img.determine();
+        let (determined, _) = img.remove_nones().determine();
         let (minimized, _) = determined.minimize();
 
-        let core11 = g.core(1, 1).into_iter().collect::<HashSet<_>>();
-        let core12 = LGraph::graph_from_paths(
-            g.core(1, 2)
-                .into_iter()
-                .filter(|p| !core11.contains(p))
-                .collect::<Vec<_>>(),
-        )
-        .unwrap();
-        let core11 = LGraph::graph_from_paths(g.core(1, 1)).unwrap();
-
         let mut f = File::create("outs.txt").unwrap();
-        writeln!(f, "{}", display_img(&img)).unwrap();
-        writeln!(f, "\ncore11:\n{}", display_core(&core11)).unwrap();
-        writeln!(f, "\ncore12:\n{}", display_core(&core12)).unwrap();
+        writeln!(f, "{}", display_minimized(&minimized)).unwrap();
         assert_eq!(minimized.node_count(), 3);
     }
 }

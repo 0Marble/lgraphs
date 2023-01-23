@@ -136,10 +136,10 @@ fn normal_form(g: Graph):
             
             if b.cur_max_depth() > 1: I dont know...
 
-            if let Some(edge) = cre12.edge_from_to((q, ab), (q, a)):
+            if let Some(edge) = core12.edge_from_to((q, ab), (q, a)):
                 if edge.brackets() == b:
                     res.add_edge((q, a), edge.items(), (q, a))
-            else if let Some(edge) = cre12.edge_from_to((q, a), (q, ab)):
+            else if let Some(edge) = core12.edge_from_to((q, a), (q, ab)):
                 if edge.brackets() == b:
                     res.add_edge((q, a), edge.items(), (q, a))    
             
