@@ -543,7 +543,7 @@ where
                 };
 
                 if b.max_depth() > 1 {
-                    // TODO Perhaps we should find paths from (q, a) to (q, ab) and use them for a loop..
+                    // FIXME Perhaps we should find paths from (q, a) to (q, ab) and use them for a loop..
                     continue;
                 }
 
@@ -670,41 +670,17 @@ mod tests {
 
     use super::*;
 
-    fn example_non_regular() -> LGraph<char, char, char> {
+    fn example_non_regular() -> LGraph<i32, char, char> {
         let g = Graph::from_builder()
-            .add_edge(
-                '1',
-                (Some('a'), BracketSet::new([Bracket::new('[', 1, true)])),
-                '1',
-            )
-            .add_edge(
-                '1',
-                (Some('d'), BracketSet::new([Bracket::new('[', 2, true)])),
-                '2',
-            )
-            .add_edge(
-                '2',
-                (Some('b'), BracketSet::new([Bracket::new('[', 2, false)])),
-                '2',
-            )
-            .add_edge(
-                '2',
-                (Some('c'), BracketSet::new([Bracket::new('[', 3, true)])),
-                '2',
-            )
-            .add_edge(
-                '2',
-                (Some('d'), BracketSet::new([Bracket::new('[', 3, false)])),
-                '3',
-            )
-            .add_edge(
-                '3',
-                (Some('a'), BracketSet::new([Bracket::new('[', 1, false)])),
-                '3',
-            )
+            .add_edge(1, mk(Some('a'), 1, true), 1)
+            .add_edge(1, mk(Some('d'), 2, true), 2)
+            .add_edge(2, mk(Some('b'), 2, false), 2)
+            .add_edge(2, mk(Some('c'), 3, true), 2)
+            .add_edge(2, mk(Some('d'), 3, false), 3)
+            .add_edge(3, mk(Some('a'), 1, false), 3)
             .build();
 
-        LGraph::new_unchecked(g, '1', ['3'])
+        LGraph::new_unchecked(g, 1, [3])
     }
 
     fn mk<I>(t: Option<I>, i: usize, open: bool) -> (Option<I>, BracketSet<char>) {
@@ -914,10 +890,93 @@ mod tests {
         s
     }
 
+    fn example_regular_3() -> LGraph<i32, char, char> {
+        let g = Graph::from_builder()
+            .add_edge(1, mk(None, 1, true), 2)
+            .add_edge(2, mk(Some('a'), 2, true), 2)
+            .add_edge(2, mk(None, 3, true), 3)
+            .add_edge(3, mk(None, 3, false), 4)
+            .add_edge(4, mk(None, 2, false), 4)
+            .add_edge(4, mk(None, 1, false), 5)
+            .build();
+
+        LGraph::new_unchecked(g, 1, [5])
+    }
+
+    fn example_regular_4() -> LGraph<i32, char, char> {
+        let g = Graph::from_builder()
+            .add_edge(1, mk(Some('a'), 1, true), 2)
+            .add_edge(2, mk(Some('b'), 2, true), 3)
+            .add_edge(3, mk(Some('c'), 3, true), 4)
+            .add_edge(4, mk(Some('d'), 4, true), 5)
+            .add_edge(5, mk(Some('d'), 4, false), 6)
+            .add_edge(6, mk(Some('c'), 3, false), 7)
+            .add_edge(7, mk(Some('b'), 2, false), 8)
+            .add_edge(8, mk(Some('a'), 1, false), 9)
+            .build();
+
+        LGraph::new_unchecked(g, 1, [9])
+    }
+
+    fn example_regular_5() -> LGraph<i32, char, char> {
+        let g = Graph::from_builder()
+            .add_edge(1, mk(Some('a'), 3, true), 2)
+            .add_edge(2, mk(Some('b'), 3, false), 3)
+            .add_edge(3, mk(Some('c'), 1, true), 1)
+            .add_edge(1, mk(Some('d'), 3, true), 4)
+            .add_edge(4, mk(None, 3, false), 5)
+            .add_edge(5, mk(None, 1, false), 5)
+            .build();
+
+        LGraph::new_unchecked(g, 1, [5])
+    }
+
+    fn example_regular_6() -> LGraph<i32, char, char> {
+        let g = Graph::from_builder()
+            .add_edge(1, mk(Some('a'), 1, true), 2)
+            .add_edge(2, mk(Some('b'), 1, false), 3)
+            .add_edge(3, mk(Some('c'), 2, true), 2)
+            .add_edge(2, mk(Some('d'), 2, false), 4)
+            .add_edge(4, mk(Some('d'), 3, true), 5)
+            .add_edge(5, mk(None, 3, false), 4)
+            .build();
+
+        LGraph::new_unchecked(g, 1, [4])
+    }
+
     #[test]
     fn regular() {
         use std::fs::File;
         use std::io::Write;
+        let mut f = File::create("outs.txt").unwrap();
+
+        let g = example_regular_2();
+        let normal = g.normal_form().unwrap();
+        let img = normal.regular_image();
+        let (determined, _) = img.remove_nones().determine();
+        let (minimized, _) = determined.minimize();
+
+        writeln!(f, "{}", display_minimized(&minimized)).unwrap();
+        assert_eq!(minimized.node_count(), 3);
+
+        let g = example_regular_3();
+
+        let normal = g.normal_form().unwrap();
+        let img = normal.regular_image();
+        let (determined, _) = img.remove_nones().determine();
+        let (minimized, _) = determined.minimize();
+
+        writeln!(f, "{}", display_minimized(&minimized)).unwrap();
+        assert_eq!(minimized.node_count(), 1);
+
+        let g = example_regular_6();
+        let normal = g.normal_form().unwrap();
+        let img = normal.regular_image();
+        let (determined, _) = img.remove_nones().determine();
+        let (minimized, _) = determined.minimize();
+
+        writeln!(f, "{}", display_minimized(&minimized)).unwrap();
+        assert_eq!(minimized.node_count(), 5);
 
         let g = example_regular();
         let normal = g.normal_form().unwrap();
@@ -925,8 +984,27 @@ mod tests {
         let (determined, _) = img.remove_nones().determine();
         let (minimized, _) = determined.minimize();
 
-        let mut f = File::create("outs.txt").unwrap();
         writeln!(f, "{}", display_minimized(&minimized)).unwrap();
         assert_eq!(minimized.node_count(), 3);
+
+        // let g = example_regular_4();
+        // dbg!(g.core(1, 1));
+        // dbg!(g.core(1, 2));
+        // let normal = g.normal_form().unwrap();
+        // let img = normal.regular_image();
+        // let (determined, _) = img.remove_nones().determine();
+        // let (minimized, _) = determined.minimize();
+
+        // writeln!(f, "{}", display_minimized(&minimized)).unwrap();
+        // assert_eq!(minimized.node_count(), 9);
+
+        // let g = example_regular_5();
+        // let normal = g.normal_form().unwrap();
+        // let img = normal.regular_image();
+        // let (determined, _) = img.remove_nones().determine();
+        // let (minimized, _) = determined.minimize();
+        // println!("{}", display_img(&img));
+        // writeln!(f, "{}", display_minimized(&minimized)).unwrap();
+        // assert_eq!(minimized.node_count(), 4);
     }
 }
