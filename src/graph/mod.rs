@@ -1,5 +1,6 @@
 use std::{
     collections::{HashSet, VecDeque},
+    fmt::Display,
     hash::Hash,
     ops::Index,
 };
@@ -7,6 +8,11 @@ use std::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EdgeIndex {
     index: usize,
+}
+impl Display for EdgeIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.index)
+    }
 }
 
 impl EdgeIndex {
@@ -18,6 +24,11 @@ impl EdgeIndex {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeIndex {
     index: usize,
+}
+impl Display for NodeIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.index)
+    }
 }
 
 impl NodeIndex {
@@ -136,14 +147,20 @@ where
 impl<N, I> GraphBuilder<N, I>
 where
     N: Eq,
+    I: Eq,
 {
     pub fn clear(mut self) -> Self {
         self.edges.clear();
         self.nodes.clear();
         self
     }
-    pub fn add_named_edge(mut self, edge: (N, I, N)) -> Self {
-        let (source, item, target) = edge;
+    pub fn add_edge(mut self, source: N, item: I, target: N) -> Self {
+        if self.edges.iter().any(|e| {
+            self.nodes[e.source] == source && e.item == item && self.nodes[e.target] == target
+        }) {
+            return self;
+        }
+
         let source_index = self
             .nodes
             .iter()
@@ -164,6 +181,7 @@ where
                 self.nodes.push(target);
                 self.nodes.len() - 1
             });
+
         self.edges.push(InternalEdge {
             source: source_index,
             target: target_index,
@@ -212,6 +230,7 @@ where
 impl<N, I> MangledBuilder<N, I>
 where
     N: Eq,
+    I: Eq,
 {
     pub fn new(builder: GraphBuilder<N, I>) -> Self {
         let builder = GraphBuilder {
@@ -236,10 +255,10 @@ where
                 MangledNode::Mangled(new_mangled_count - 1)
             } else {
                 let next = MangledNode::Node(end);
-                self.builder = self.builder.add_named_edge((prev, item, next));
+                self.builder = self.builder.add_edge(prev, item, next);
                 break;
             };
-            self.builder = self.builder.add_named_edge((prev, item, next));
+            self.builder = self.builder.add_edge(prev, item, next);
 
             prev = MangledNode::Mangled(new_mangled_count - 1);
         }
@@ -637,7 +656,10 @@ impl<'a, 'b, N, I> Iterator for Items<'a, 'b, N, I> {
             .edges
             .get(self.cur)
             .and_then(|e| self.path.graph.edge_ref(*e))
-            .map(|e| e.item())
+            .map(|e| {
+                self.cur += 1;
+                e.item()
+            })
     }
 }
 

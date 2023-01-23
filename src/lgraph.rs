@@ -2,15 +2,14 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     fmt::Debug,
     hash::Hash,
-    ops::Index,
 };
 
 use crate::{
     graph::{
-        EdgeIndex, EdgeRef, Graph, GraphBuilder, MangledBuilder, MangledNode, NodeIndex, NodeRef,
-        PathRef, ReachableFrom,
+        EdgeIndex, EdgeRef, Graph, MangledBuilder, MangledNode, NodeIndex, NodeRef, PathRef,
+        ReachableFrom,
     },
-    state_machine,
+    state_machine::StateMachine,
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -30,12 +29,18 @@ impl<K> Bracket<K> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct BracketSet<K> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BracketSet<K>
+where
+    K: Eq + Hash,
+{
     set: HashSet<Bracket<K>>,
 }
 
-impl<K> BracketSet<K> {
+impl<K> BracketSet<K>
+where
+    K: Eq + Hash,
+{
     pub fn new(brackets: impl IntoIterator<Item = Bracket<K>>) -> Self
     where
         K: Eq + Hash,
@@ -50,7 +55,10 @@ impl<K> BracketSet<K> {
         Self { set }
     }
 }
-impl<K> IntoIterator for BracketSet<K> {
+impl<K> IntoIterator for BracketSet<K>
+where
+    K: Eq + Hash,
+{
     type Item = Bracket<K>;
 
     type IntoIter = std::collections::hash_set::IntoIter<Bracket<K>>;
@@ -59,7 +67,10 @@ impl<K> IntoIterator for BracketSet<K> {
         self.set.into_iter()
     }
 }
-impl<'a, K> IntoIterator for &'a BracketSet<K> {
+impl<'a, K> IntoIterator for &'a BracketSet<K>
+where
+    K: Eq + Hash,
+{
     type Item = &'a Bracket<K>;
 
     type IntoIter = std::collections::hash_set::Iter<'a, Bracket<K>>;
@@ -160,6 +171,10 @@ impl<K> BracketStack<K> {
     where
         K: Eq + Hash + Clone,
     {
+        for bracket in &set {
+            self.stacks.entry(bracket.kind.clone()).or_default();
+        }
+
         self.can_accept(&set)?;
         self.accept(set);
 
@@ -191,7 +206,10 @@ impl<K> BracketStack<K> {
 }
 
 #[derive(Debug, Clone)]
-pub struct LGraph<N, I, K> {
+pub struct LGraph<N, I, K>
+where
+    K: Eq + Hash,
+{
     graph: Graph<N, (Option<I>, BracketSet<K>)>,
     start_node: NodeIndex,
     end_nodes: HashSet<NodeIndex>,
@@ -211,7 +229,10 @@ impl<K> From<BracketStackError<K>> for LGraphError<K> {
     }
 }
 
-impl<N, I, K> LGraph<N, I, K> {
+impl<N, I, K> LGraph<N, I, K>
+where
+    K: Eq + Hash,
+{
     pub fn start_node(&self) -> NodeIndex {
         self.start_node
     }
@@ -305,21 +326,23 @@ impl<N, I, K> LGraph<N, I, K> {
         }
 
         let mut cur_stack: BracketStack<K> = BracketStack::default();
-        let mut node_cycles = HashMap::from([((self.source(path[0]), cur_stack.clone()), 0)]);
+        let mut node_cycles = HashMap::from([(
+            (
+                self.source(path[0])
+                    .ok_or(LGraphError::InvalidEdge(path[0]))?,
+                cur_stack.clone(),
+            ),
+            0,
+        )]);
 
-        for edge in path.edges() {
-            cur_stack.try_accept(
-                self.item(edge)
-                    .ok_or(LGraphError::InvalidEdge(edge))?
-                    .1
-                    .clone(),
-            )?;
+        for edge in path.edges().flat_map(|e| self.edge_ref(e)) {
+            cur_stack.try_accept(edge.item().1.clone())?;
             let cur_depth = cur_stack.max_depth();
             if cur_depth > d + 1 {
                 return Ok(false);
             };
 
-            let cur_node = self.target(edge);
+            let cur_node = edge.target_index();
             let node_cycles_count = node_cycles
                 .entry((cur_node, cur_stack.clone()))
                 .and_modify(|node_cycles_count| *node_cycles_count += 1)
@@ -361,7 +384,7 @@ impl<N, I, K> LGraph<N, I, K> {
                     new_brackets.accept(self.item(edge).unwrap().1.clone());
                     let new_path = path.clone().push(edge);
 
-                    if self.is_in_core(&new_path, w, d).unwrap() {
+                    if self.is_in_core(&new_path, w, d).unwrap_or(false) {
                         state_stack.push_front((new_path, self.target(edge).unwrap(), new_brackets))
                     }
                 }
@@ -420,7 +443,7 @@ impl<N, I, K> LGraph<N, I, K> {
     ) -> Result<LGraph<(NodeIndex, BracketStack<K>), &'a I, K>, LGraphError<K>>
     where
         N: 'a + Eq,
-        I: 'a + Clone,
+        I: 'a + Clone + Eq,
         K: 'a + Eq + Hash + Clone,
     {
         let mut builder = Graph::from_builder();
@@ -444,7 +467,7 @@ impl<N, I, K> LGraph<N, I, K> {
                 let next_node = (edge.target_index(), stack.clone());
                 let item = edge.item().0.as_ref();
                 let brackets = edge.item().1.clone();
-                builder = builder.add_named_edge((prev_node, (item, brackets), next_node.clone()));
+                builder = builder.add_edge(prev_node, (item, brackets), next_node.clone());
                 prev_node = next_node.clone();
             }
             end_nodes.insert(prev_node);
@@ -467,37 +490,60 @@ impl<N, I, K> LGraph<N, I, K> {
         &self,
     ) -> Result<LGraph<MangledNode<(NodeIndex, BracketStack<K>)>, &I, K>, LGraphError<K>>
     where
-        N: Eq,
-        I: Clone,
+        N: Eq + Debug,
+        I: Clone + Eq + Debug,
         K: Eq + Hash + Clone + Debug,
     {
-        let core11 = Self::graph_from_paths(self.core(1, 1))?;
-        let core12 = Self::graph_from_paths(self.core(1, 2))?;
+        let core11 = self.core(1, 1).into_iter().collect::<HashSet<_>>();
+        let core12 = match Self::graph_from_paths(
+            self.core(1, 2).into_iter().filter(|p| !core11.contains(p)),
+        ) {
+            Ok(g) => Some(g),
+            Err(LGraphError::NoNodesGiven) => None,
+            Err(e) => return Err(e),
+        };
+        let core11 = Self::graph_from_paths(core11)?;
         let mut builder = MangledBuilder::new(core11.clone().graph.to_builder());
 
-        for node in core12.nodes().flat_map(|n| core12.node_ref(n)) {
-            let (q, ab) = node.contents();
-            for (path, next_node) in core12
-                .reachable_from(node.index())
-                .flat_map(|(path, n)| Some((path, core12.node_ref(n)?)))
+        if let Some(core12) = &core12 {
+            for node in core12
+                .nodes()
+                .flat_map(|n| core12.node_ref(n))
+                .filter(|n| !n.contents().1.empty())
             {
-                let (next, b) = next_node.contents();
-                if next != q {
-                    continue;
-                }
+                let (q, ab) = node.contents();
 
-                let a = if let Some(a) = ab.remove_suffix(b) {
-                    a
-                } else {
-                    continue;
-                };
+                for (path, next_node) in core12
+                    .reachable_from(node.index())
+                    .filter(|(_, n)| n != &node.index())
+                    .flat_map(|(path, n)| Some((path, core12.node_ref(n)?)))
+                    .filter(|(_, n)| !n.contents().1.empty())
+                {
+                    let (next, b) = next_node.contents();
+                    if next != q {
+                        continue;
+                    }
 
-                let combined_node = (*next, a);
-                if core11.node_with(&combined_node).is_none() {
-                    continue;
+                    let a = if let Some(a) = ab.remove_suffix(b) {
+                        a
+                    } else if let Some(a) = b.remove_suffix(ab) {
+                        a
+                    } else {
+                        continue;
+                    };
+
+                    let combined_node = (*next, a);
+                    if core11.node_with(&combined_node).is_none() {
+                        continue;
+                    }
+                    println!("{:?} ~ {:?} = {:?}", (q, ab), (q, b), combined_node);
+
+                    builder = builder.add_path(
+                        combined_node.clone(),
+                        path.items().cloned(),
+                        combined_node,
+                    );
                 }
-                builder =
-                    builder.add_path(combined_node.clone(), path.items().cloned(), combined_node);
             }
         }
 
@@ -507,14 +553,37 @@ impl<N, I, K> LGraph<N, I, K> {
             core11
                 .end_nodes()
                 .flat_map(|n| core11.node_ref(n))
-                .chain(core12.end_nodes().flat_map(|n| core11.node_ref(n)))
+                .chain(
+                    core12
+                        .iter()
+                        .flat_map(|c| c.end_nodes().flat_map(|n| c.node_ref(n))),
+                )
                 .map(|n| n.contents().clone())
                 .map(MangledNode::Node),
         ))
     }
+
+    pub fn regular_image(&self) -> StateMachine<NodeIndex, Option<&I>>
+    where
+        I: Eq,
+    {
+        let mut builder = Graph::from_builder();
+        for edge in self.edges().flat_map(|e| self.edge_ref(e)) {
+            builder = builder.add_edge(
+                edge.source_index(),
+                edge.item().0.as_ref(),
+                edge.target_index(),
+            );
+        }
+
+        StateMachine::new(builder.build(), self.start_node, self.end_nodes())
+    }
 }
 
-pub struct LgraphTraverse<'a, L, K, I, IT> {
+pub struct LgraphTraverse<'a, L, K, I, IT>
+where
+    K: Eq + Hash,
+{
     graph: &'a LGraph<L, I, K>,
     cur_node: NodeIndex,
     item_iter: IT,
@@ -582,46 +651,78 @@ mod tests {
 
     use super::*;
 
-    fn example() -> LGraph<char, char, char> {
+    fn example_non_regular() -> LGraph<char, char, char> {
         let g = Graph::from_builder()
-            .add_named_edge((
+            .add_edge(
                 '1',
                 (Some('a'), BracketSet::new([Bracket::new('[', 1, true)])),
                 '1',
-            ))
-            .add_named_edge((
+            )
+            .add_edge(
                 '1',
                 (Some('d'), BracketSet::new([Bracket::new('[', 2, true)])),
                 '2',
-            ))
-            .add_named_edge((
+            )
+            .add_edge(
                 '2',
                 (Some('b'), BracketSet::new([Bracket::new('[', 2, false)])),
                 '2',
-            ))
-            .add_named_edge((
+            )
+            .add_edge(
                 '2',
                 (Some('c'), BracketSet::new([Bracket::new('[', 3, true)])),
                 '2',
-            ))
-            .add_named_edge((
+            )
+            .add_edge(
                 '2',
                 (Some('d'), BracketSet::new([Bracket::new('[', 3, false)])),
                 '3',
-            ))
-            .add_named_edge((
+            )
+            .add_edge(
                 '3',
                 (Some('a'), BracketSet::new([Bracket::new('[', 1, false)])),
                 '3',
-            ))
+            )
             .build();
 
         LGraph::new_unchecked(g, '1', ['3'])
     }
 
+    fn mk<I>(t: Option<I>, i: usize, open: bool) -> (Option<I>, BracketSet<char>) {
+        (t, BracketSet::new([Bracket::new('[', i, open)]))
+    }
+    fn example_regular() -> LGraph<i32, char, char> {
+        let g = Graph::from_builder()
+            .add_edge(1, mk(None, 1, true), 2)
+            .add_edge(2, mk(Some('a'), 2, true), 2)
+            .add_edge(2, mk(Some('b'), 3, true), 3)
+            .add_edge(3, mk(None, 3, false), 4)
+            .add_edge(4, mk(Some('a'), 2, false), 4)
+            .add_edge(4, mk(Some('b'), 3, true), 5)
+            .add_edge(5, mk(None, 3, false), 6)
+            .add_edge(6, mk(None, 2, false), 6)
+            .add_edge(6, mk(None, 1, false), 10)
+            .add_edge(4, mk(Some('a'), 3, true), 7)
+            .add_edge(7, mk(None, 3, false), 8)
+            .add_edge(8, mk(Some('a'), 3, true), 9)
+            .add_edge(9, mk(None, 3, false), 8)
+            .add_edge(8, mk(Some('b'), 1, false), 10)
+            .build();
+
+        LGraph::new_unchecked(g, 1, [10])
+    }
+
+    fn example_regular_2() -> LGraph<i32, char, char> {
+        let g = Graph::from_builder()
+            .add_edge(1, mk(Some('a'), 0, true), 1)
+            .add_edge(1, mk(Some('b'), 0, false), 2)
+            .build();
+        LGraph::new_unchecked(g, 1, [2])
+    }
+
     #[test]
     fn in_core() {
-        let g = example();
+        let g = example_non_regular();
         let p0 = PathRef::new(
             &g.graph,
             [0, 1, 2, 3, 4, 5]
@@ -650,7 +751,7 @@ mod tests {
 
     #[test]
     fn core() {
-        let g = example();
+        let g = example_non_regular();
         let core11 = HashSet::from_iter(g.core(1, 1).into_iter());
         let core12 = HashSet::from_iter(g.core(1, 2).into_iter());
 
@@ -679,7 +780,7 @@ mod tests {
 
     #[test]
     fn traverse() {
-        let g = example();
+        let g = example_non_regular();
         let s = "aadbcdaa";
         let p = PathRef::new(
             &g.graph,
@@ -694,11 +795,107 @@ mod tests {
         assert!(g.traverse("aadbcda".chars()).is_err());
     }
 
+    fn display_img(g: &StateMachine<NodeIndex, Option<&&char>>) -> String {
+        let mut s = String::new();
+        use std::fmt::Write;
+        writeln!(s, "starting: {};", g.contents(g.start_node()).unwrap()).unwrap();
+        write!(s, "ending: [").unwrap();
+        for end_node in g.end_nodes().flat_map(|n| g.contents(n)) {
+            write!(s, "{}, ", end_node).unwrap();
+        }
+        writeln!(s, "]").unwrap();
+
+        for edge in g.edges().flat_map(|e| g.edge_ref(e)) {
+            writeln!(
+                s,
+                "\t{} => {} => {};",
+                edge.source(),
+                edge.item().cloned().cloned().unwrap_or('!'),
+                edge.target()
+            )
+            .unwrap();
+        }
+
+        s
+    }
+
+    fn display_core(g: &LGraph<(NodeIndex, BracketStack<char>), &char, char>) -> String {
+        let mut s = String::new();
+        use std::fmt::Write;
+
+        fn write_node(node: &(NodeIndex, BracketStack<char>)) -> String {
+            format!(
+                "{}{}",
+                node.0.clone(),
+                node.1
+                    .stacks
+                    .iter()
+                    .fold(String::new(), |acc, (kind, stack)| format!(
+                        "{acc},{kind}{}",
+                        stack
+                            .iter()
+                            .fold(String::new(), |acc, i| format!("{}{}", acc, i))
+                    ))
+            )
+        }
+
+        writeln!(
+            s,
+            "starting: {};",
+            write_node(g.node(g.start_node()).unwrap())
+        )
+        .unwrap();
+        write!(s, "ending: [").unwrap();
+        for end_node in g.end_nodes().flat_map(|n| g.node(n)) {
+            write!(s, "{}, ", write_node(end_node)).unwrap();
+        }
+        writeln!(s, "]").unwrap();
+        for edge in g.edges().flat_map(|e| g.edge_ref(e)) {
+            writeln!(
+                s,
+                "\t{} => {}{} => {};",
+                write_node(edge.source()),
+                edge.item().0.cloned().unwrap_or('!'),
+                edge.item()
+                    .1
+                    .clone()
+                    .into_iter()
+                    .fold(String::new(), |acc, b| {
+                        format!("{}{}{}", acc, if b.is_opening { '[' } else { ']' }, b.index)
+                    }),
+                write_node(edge.target())
+            )
+            .unwrap();
+        }
+
+        s
+    }
+
     #[test]
     fn regular() {
-        let g = example();
+        use std::fs::File;
+        use std::io::Write;
+
+        let g = example_regular();
         let normal = g.normal_form().unwrap();
-        dbg!(normal);
-        assert!(false);
+        let img = normal.regular_image();
+        let (determined, _) = img.determine();
+        let (minimized, _) = determined.minimize();
+
+        let core11 = g.core(1, 1).into_iter().collect::<HashSet<_>>();
+        let core12 = LGraph::graph_from_paths(
+            g.core(1, 2)
+                .into_iter()
+                .filter(|p| !core11.contains(p))
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let core11 = LGraph::graph_from_paths(g.core(1, 1)).unwrap();
+
+        let mut f = File::create("outs.txt").unwrap();
+        writeln!(f, "{}", display_img(&img)).unwrap();
+        writeln!(f, "\ncore11:\n{}", display_core(&core11)).unwrap();
+        writeln!(f, "\ncore12:\n{}", display_core(&core12)).unwrap();
+        assert_eq!(minimized.node_count(), 3);
     }
 }

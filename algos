@@ -125,18 +125,24 @@ fn graph_from_paths(g: Graph, p: [Path]):
 fn normal_form(g: Graph):
     core11 = g.graph_from_paths(g.core(1, 1))
     core12 = g.graph_from_paths(g.core(1, 2))        
-    res = MagledGraph(g)
+    res = core11
 
-    for (q, ab) in core12.nodes():
-        for (path, (node, b)) in core12.reachable_from((q, ab)):
-            if node != q || ab.has_suffix(b):
-                continue
-
-            a = ab.remove_suffix(b)
-            if !core11.has_node((q, a)):
-                continue
+    for (q, a) in core11.nodes():
+        if !core12.has_node((q, a)): continue
+        for (node, ab) in core12.nodes():
+            if node != q: continue
+            if !ab.has_prefix(a): continue;
+            b = ab.strip_prefix(a)
             
-            res.add_mangled_path((q, a), path.items(), (q, a))
+            if b.cur_max_depth() > 1: I dont know...
+
+            if let Some(edge) = cre12.edge_from_to((q, ab), (q, a)):
+                if edge.brackets() == b:
+                    res.add_edge((q, a), edge.items(), (q, a))
+            else if let Some(edge) = cre12.edge_from_to((q, a), (q, ab)):
+                if edge.brackets() == b:
+                    res.add_edge((q, a), edge.items(), (q, a))    
+            
     return res
 
 

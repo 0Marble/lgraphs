@@ -21,6 +21,7 @@ impl<N, I> StateMachine<N, I> {
     pub fn new(graph: Graph<N, I>, start_node: N, end_nodes: impl IntoIterator<Item = N>) -> Self
     where
         N: Eq + Clone,
+        I: Eq,
     {
         let mut builder = graph.to_builder().add_node(start_node.clone());
         let end_nodes = end_nodes.into_iter().collect::<Vec<_>>();
@@ -136,7 +137,7 @@ impl<N, I> StateMachine<N, I> {
             if !edges.is_empty() {
                 for (item, target) in edges.into_iter() {
                     let target = Self::convert(target, &mut conversion);
-                    builder = builder.add_named_edge((source, item, target));
+                    builder = builder.add_edge(source, item, target);
                 }
             }
         }
@@ -175,18 +176,18 @@ impl<N, I> StateMachine<N, I> {
     pub fn remove_unreachable(&self) -> Self
     where
         N: Clone + Eq,
-        I: Clone,
+        I: Clone + Eq,
     {
         let mut builder = Graph::from_builder();
         let mut end_nodes = HashSet::new();
 
         for (_, reached) in self.reachable_from(self.start_node()) {
             for edge in self.edges_from(reached).flat_map(|e| self.edge_ref(e)) {
-                builder = builder.add_named_edge((
+                builder = builder.add_edge(
                     edge.source().clone(),
                     edge.item().clone(),
                     edge.target().clone(),
-                ));
+                );
 
                 if self.is_end_node(edge.target_index()) {
                     end_nodes.insert(edge.target_index());
@@ -227,13 +228,20 @@ impl<N, I> StateMachine<N, I> {
             .flat_map(|e| self.item(e))
             .chain(self.edges_from(b).flat_map(|e| self.item(e)))
         {
+            let mut success = false;
             for (a_next, b_next) in AllPairs::new(
                 self.edges_from_with(a, item).flat_map(|e| self.target(e)),
                 self.edges_from_with(b, item).flat_map(|e| self.target(e)),
             ) {
                 if !self.are_equivalent(a_next, b_next, prev) {
                     return false;
+                } else {
+                    success = true;
                 }
+            }
+
+            if !success {
+                return false;
             }
         }
 
@@ -304,7 +312,7 @@ impl<N, I> StateMachine<N, I> {
                     .find(|g| g.contains(&edge.target_index()))
                     .unwrap();
                 let target = Self::convert(target_group.clone(), &mut conversion);
-                builder = builder.add_named_edge((source, edge.item().clone(), target));
+                builder = builder.add_edge(source, edge.item().clone(), target);
             }
         }
 
@@ -360,8 +368,8 @@ mod tests {
             (3, 3, 4),
         ];
         let mut builder = Graph::from_builder();
-        for edge in edges {
-            builder = builder.add_named_edge(edge);
+        for (source, item, target) in edges {
+            builder = builder.add_edge(source, item, target);
         }
 
         let g = builder.build();
@@ -391,11 +399,11 @@ mod tests {
             ('g', 1, 'e'),
         ];
         let mut builder = Graph::from_builder();
-        for edge in edges {
-            builder = builder.add_named_edge(edge);
+        for (source, item, target) in edges {
+            builder = builder.add_edge(source, item, target);
         }
         let s = StateMachine::new(builder.build(), 'a', ['c', 'e']);
-        let (minimized, conversion) = s.minimize();
+        let (minimized, _) = s.minimize();
         assert_eq!(minimized.node_count(), 3);
     }
 }
