@@ -1,4 +1,3 @@
-pub mod graph;
-mod iters;
-pub mod lgraph;
-pub mod state_machine;
+pub mod graphics;
+pub mod graphs;
+pub mod parser;
