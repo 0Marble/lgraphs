@@ -9,6 +9,7 @@ use crate::graphs::{
 
 use self::genometry::{Rect, RotatedRect, Vec2};
 
+#[derive(Debug, Clone)]
 pub enum DrawCommand {
     Node { clip: Rect },
     Line { from: Vec2, to: Vec2 },
@@ -174,7 +175,11 @@ where
 
         let mut commands = vec![DrawCommand::Text {
             text: edge.contents().to_string(),
-            clip: RotatedRect::new(dir.t(0.5), (dir.len(), self.text_height), dir),
+            clip: RotatedRect::new(
+                dir.t(0.5) + p1,
+                (dir.len(), self.text_height),
+                dir.normalize(),
+            ),
         }];
         commands.append(&mut arrow);
         commands

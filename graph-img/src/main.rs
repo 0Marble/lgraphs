@@ -1,4 +1,5 @@
 use image::{imageops, Rgb, RgbImage, Rgba, RgbaImage};
+use imageproc::point::Point;
 use lgraphs::graphics::genometry::{Rect, Vec2};
 use lgraphs::graphics::{DrawCommand, GraphDrawer};
 use lgraphs::graphs::default::{Graph, GraphBuilder};
@@ -84,12 +85,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     }
     // };
 
-    let graph_path = "assets/g1.json";
-    let image_path = "images/g1.png";
+    let graph_path = "assets/g2.json";
+    let image_path = "images/g2.png";
 
     let graph = make_graph(
         std::io::read_to_string(
-            &mut File::open(&graph_path).unwrap_or_else(|_| panic!("Could not open {graph_path}")),
+            &mut File::open(graph_path).unwrap_or_else(|_| panic!("Could not open {graph_path}")),
         )
         .unwrap_or_else(|_| panic!("Could not read {graph_path}")),
     )
@@ -99,12 +100,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &graph,
         graph.start_node().index(),
         graph.end_nodes().map(|n| n.index()),
-        Rect::new(0.0, 0.0, 2000.0, 200.0),
+        Rect::new(0.0, 0.0, 200.0, 200.0),
     );
 
-    let mut image = RgbaImage::from_pixel(2000, 200, Rgba([255, 255, 255, 255]));
+    let mut image = RgbaImage::from_pixel(200, 200, Rgba([255, 255, 255, 255]));
     let font = Vec::from(include_bytes!("../fonts/gnu-free/FreeMono.otf") as &[u8]);
     let font = Font::try_from_vec(font).expect("Could not initialize font");
+
+    dbg!(&commands);
     for command in commands {
         match command {
             DrawCommand::Node { clip } => {
@@ -124,30 +127,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
             }
             DrawCommand::Text { text, clip } => {
-                let size = f32::max(clip.width(), clip.height()) as u32;
-                let mut text_image = RgbaImage::from_pixel(size, size, Rgba([0, 0, 0, 0]));
+                let size = f32::max(clip.width(), clip.height()) * f32::sqrt(2.0);
+                let top_left = clip.uv(0.0, 0.0);
+                let full_rect =
+                    Rect::new(top_left.x, top_left.y, top_left.y + size, top_left.y + size);
+
+                let mut text_image = RgbaImage::from_pixel(
+                    full_rect.width() as u32,
+                    full_rect.height() as u32,
+                    Rgba([0, 0, 0, 0]),
+                );
+                let text_in_image = full_rect.center_rect(clip.width(), clip.height());
+                dbg!(&text_in_image);
                 imageproc::drawing::draw_text_mut(
                     &mut text_image,
                     Rgba([0, 0, 0, 255]),
-                    0,
-                    (size / 2) as i32,
+                    (text_in_image.x0 - full_rect.x0) as i32,
+                    (text_in_image.y0 - full_rect.y0) as i32,
                     Scale::uniform(13.0),
                     &font,
                     &text,
                 );
-                imageproc::geometric_transformations::rotate(
-                    &text_image,
-                    ((size as f32) * 0.5, (size as f32) * 0.5),
-                    clip.x_facing.dot(&Vec2::new(1.0, 1.0)).acos(),
-                    imageproc::geometric_transformations::Interpolation::Bicubic,
-                    Rgba([0, 0, 0, 0]),
-                );
+
+                // text_image = imageproc::geometric_transformations::rotate(
+                //     &text_image,
+                //     (full_rect.width() * 0.5, full_rect.height() * 0.5),
+                //     clip.x_facing.dot(&Vec2::new(1.0, 0.0)).acos(),
+                //     imageproc::geometric_transformations::Interpolation::Bicubic,
+                //     Rgba([0, 0, 0, 0]),
+                // );
 
                 imageops::overlay(
                     &mut image,
                     &text_image,
-                    clip.center.x as i64,
-                    clip.center.y as i64,
+                    top_left.x as i64,
+                    top_left.y as i64,
                 );
             }
         }

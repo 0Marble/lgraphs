@@ -130,6 +130,20 @@ impl Rect {
 
         Vec2::new(self.x0, self.y0) + x * u + y * v
     }
+    pub fn center_rect(&self, width: f32, height: f32) -> Rect {
+        let x = if width >= self.width() {
+            0.0
+        } else {
+            self.width() - width
+        } + self.uv(0.0, 0.0).x;
+        let y = if height >= self.height() {
+            0.0
+        } else {
+            self.height() - height
+        } + self.uv(0.0, 0.0).y;
+
+        Rect::new(x, y, x + width, y + height)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -144,7 +158,7 @@ impl RotatedRect {
         Self {
             center,
             size,
-            x_facing,
+            x_facing: x_facing.normalize(),
         }
     }
 
@@ -153,6 +167,12 @@ impl RotatedRect {
     }
     pub fn height(&self) -> f32 {
         self.size.1
+    }
+
+    pub fn uv(&self, u: f32, v: f32) -> Vec2 {
+        let left = self.x_facing * self.width();
+        let up = self.x_facing.normal() * self.height();
+        left * (u - 0.5) + up * (v - 0.5) + self.center
     }
 }
 
