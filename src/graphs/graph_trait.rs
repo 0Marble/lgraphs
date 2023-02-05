@@ -1,272 +1,150 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct NodeIndex(pub(super) usize);
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EdgeIndex(pub(super) usize);
+use std::collections::HashSet;
 
-mod refs {
-    use super::{EdgeIndex, NodeIndex};
-
-    #[derive(Debug)]
-    pub struct NodeRef<'a, N> {
-        contents: &'a N,
-        index: usize,
-    }
-
-    impl<'a, N> Clone for NodeRef<'a, N> {
-        fn clone(&self) -> Self {
-            Self {
-                contents: self.contents,
-                index: self.index,
-            }
-        }
-    }
-
-    impl<'a, N> NodeRef<'a, N> {
-        pub fn new(contents: &'a N, index: NodeIndex) -> Self {
-            Self {
-                contents,
-                index: index.0,
-            }
-        }
-
-        pub fn index(&self) -> NodeIndex {
-            NodeIndex(self.index)
-        }
-
-        pub fn contents(&self) -> &'a N {
-            self.contents
-        }
-    }
-
-    #[derive(Debug)]
-    pub struct EdgeRef<'a, N, E> {
-        contents: &'a E,
-        source: &'a N,
-        target: &'a N,
-        index: usize,
-        source_index: usize,
-        target_index: usize,
-    }
-
-    impl<'a, N, E> Clone for EdgeRef<'a, N, E> {
-        fn clone(&self) -> Self {
-            Self {
-                contents: self.contents,
-                index: self.index,
-                source: self.source,
-                target: self.target,
-                source_index: self.source_index,
-                target_index: self.target_index,
-            }
-        }
-    }
-
-    impl<'a, N, E> EdgeRef<'a, N, E> {
-        pub fn new(
-            contents: &'a E,
-            source: &'a N,
-            target: &'a N,
-            index: EdgeIndex,
-            source_index: NodeIndex,
-            target_index: NodeIndex,
-        ) -> Self {
-            Self {
-                contents,
-                source,
-                target,
-                index: index.0,
-                source_index: source_index.0,
-                target_index: target_index.0,
-            }
-        }
-
-        pub fn contents(&self) -> &'a E {
-            self.contents
-        }
-
-        pub fn source(&self) -> NodeRef<'a, N> {
-            NodeRef {
-                contents: self.source,
-                index: self.source_index,
-            }
-        }
-
-        pub fn target(&self) -> NodeRef<'a, N> {
-            NodeRef {
-                contents: self.target,
-                index: self.target_index,
-            }
-        }
-
-        pub fn index(&self) -> EdgeIndex {
-            EdgeIndex(self.index)
-        }
-
-        pub fn source_index(&self) -> NodeIndex {
-            NodeIndex(self.source_index)
-        }
-
-        pub fn target_index(&self) -> NodeIndex {
-            NodeIndex(self.target_index)
-        }
-    }
-}
-
-use std::{collections::BTreeSet, marker::PhantomData};
-
-pub use refs::{EdgeRef, NodeRef};
-
-use super::path::Path;
+use super::refs::{EdgeRef, NodeRef, Path};
 
 pub trait Graph<N, E> {
-    fn edges<'a>(&'a self) -> Box<dyn Iterator<Item = EdgeRef<'a, N, E>> + 'a>
-    where
-        E: 'a,
-        N: 'a;
-    fn nodes<'a>(&'a self) -> Box<dyn Iterator<Item = NodeRef<'a, N>> + 'a>
-    where
-        E: 'a,
-        N: 'a;
+    fn start_node(&self) -> NodeRef<'_, N>;
+    fn is_end_node(&self, node: NodeRef<'_, N>) -> bool;
+    fn nodes(&self) -> Box<dyn Iterator<Item = NodeRef<'_, N>> + '_>;
+    fn edges(&self) -> Box<dyn Iterator<Item = EdgeRef<'_, N, E>> + '_>;
 
-    fn edges_from<'a>(&'a self, node: NodeIndex) -> Box<dyn Iterator<Item = EdgeRef<'a, N, E>> + 'a>
-    where
-        E: 'a,
-        N: 'a,
-    {
-        Box::new(self.edges().filter(move |e| e.source_index() == node))
+    fn end_nodes(&self) -> Box<dyn Iterator<Item = NodeRef<'_, N>> + '_> {
+        Box::new(self.nodes().filter(|node| self.is_end_node(*node)))
     }
-    fn edges_to<'a>(&'a self, node: NodeIndex) -> Box<dyn Iterator<Item = EdgeRef<'a, N, E>> + 'a>
+    fn node_with_contents<'a, 'b>(&'a self, contents: &'b N) -> Option<NodeRef<'a, N>>
     where
-        E: 'a,
-        N: 'a,
+        'a: 'b,
+        N: Eq,
     {
-        Box::new(self.edges().filter(move |e| e.target_index() == node))
+        self.nodes().find(|node| node.contents() == contents)
     }
-    fn targets_of<'a>(&'a self, node: NodeIndex) -> Box<dyn Iterator<Item = NodeRef<'a, N>> + 'a>
+    fn edge_with_contents<'a, 'b>(&'a self, contents: &'b E) -> Option<EdgeRef<'a, N, E>>
     where
-        E: 'a,
-        N: 'a,
+        'a: 'b,
+        E: Eq,
     {
-        Box::new(self.edges_from(node).map(|e| e.target()))
+        self.edges().find(|edge| edge.contents() == contents)
+    }
+    fn edges_from<'a>(
+        &'a self,
+        node: NodeRef<'a, N>,
+    ) -> Box<dyn Iterator<Item = EdgeRef<'a, N, E>> + 'a> {
+        Box::new(
+            self.edges()
+                .map(|e| {
+                    let _ = 1 + 2;
+                    e
+                })
+                .filter(move |edge| node.eq(&edge.source())),
+        )
+    }
+    fn edges_to<'a>(
+        &'a self,
+        node: NodeRef<'a, N>,
+    ) -> Box<dyn Iterator<Item = EdgeRef<'a, N, E>> + 'a> {
+        Box::new(self.edges().filter(move |edge| node.eq(&edge.target())))
+    }
+    fn edges_from_to<'a>(
+        &'a self,
+        from: NodeRef<'a, N>,
+        to: NodeRef<'a, N>,
+    ) -> Box<dyn Iterator<Item = EdgeRef<'a, N, E>> + 'a> {
+        Box::new(
+            self.edges()
+                .filter(move |edge| from.eq(&edge.source()) && to.eq(&edge.target())),
+        )
     }
     fn edges_from_with<'a, 'b>(
         &'a self,
-        node: NodeIndex,
-        item: &'b E,
+        node: NodeRef<'a, N>,
+        contents: &'b E,
     ) -> Box<dyn Iterator<Item = EdgeRef<'a, N, E>> + 'b>
     where
-        E: 'a + Eq,
-        N: 'a,
         'a: 'b,
+        E: Eq,
     {
-        Box::new(self.edges_from(node).filter(move |e| e.contents() == item))
+        Box::new(self.edges_from(node).filter(|e| contents.eq(e.contents())))
     }
 
-    fn node_with_contents<'a>(&'a self, contents: &N) -> Option<NodeRef<'a, N>>
+    fn rebuild_to_refs<'a, B>(&'a self, builder: &mut B) -> B::TargetGraph
     where
-        N: Eq + 'a,
-        E: 'a,
+        B: Builder<NodeRef<'a, N>, EdgeRef<'a, N, E>>,
     {
-        self.nodes().find(|n| n.contents() == contents)
-    }
-    fn edge_with_contents<'a>(&'a self, contents: &E) -> Option<EdgeRef<'a, N, E>>
-    where
-        E: Eq + 'a,
-        N: 'a,
-    {
-        self.edges().find(|e| e.contents() == contents)
-    }
-    fn edge<'a>(&'a self, index: EdgeIndex) -> Option<EdgeRef<'a, N, E>>
-    where
-        E: 'a,
-        N: 'a,
-    {
-        self.edges().find(|e| e.index() == index)
-    }
-    fn node<'a>(&'a self, index: NodeIndex) -> Option<NodeRef<'a, N>>
-    where
-        E: 'a,
-        N: 'a,
-    {
-        self.nodes().find(|n| n.index() == index)
+        builder.clear();
+        for edge in self.edges() {
+            builder.add_edge(edge.source(), edge, edge.target());
+        }
+        for node in self.nodes() {
+            builder.add_node(node);
+        }
+        builder.build(self.start_node(), self.end_nodes())
     }
 
+    fn node_count(&self) -> usize {
+        self.nodes().count()
+    }
+}
+
+pub trait WithReachableFrom<N, E>: Graph<N, E> {
     fn reachable_from<'a>(
         &'a self,
-        node: NodeIndex,
-    ) -> Box<dyn Iterator<Item = (Path<'a, N, E, Self>, NodeRef<'a, N>)> + 'a>
+        node: NodeRef<'a, N>,
+    ) -> Box<dyn Iterator<Item = (Path<'a, N, E>, NodeRef<'a, N>)> + 'a>
     where
         Self: Sized,
-        E: 'a,
-        N: 'a,
     {
         Box::new(ReachableFrom {
             graph: self,
-            stack: vec![(Path::new(self), node)],
-            reached: BTreeSet::new(),
-            _p: PhantomData,
+            reached: HashSet::new(),
+            stack: vec![(vec![], node)],
         })
+    }
+    fn reachable<'a>(&'a self) -> Box<dyn Iterator<Item = (Path<'a, N, E>, NodeRef<'a, N>)> + 'a>
+    where
+        Self: Sized,
+    {
+        self.reachable_from(self.start_node())
     }
 }
 
-struct ReachableFrom<'a, N: 'a, E: 'a, G: Graph<N, E>> {
+struct ReachableFrom<'a, G, N, E>
+where
+    G: Graph<N, E>,
+{
     graph: &'a G,
-    stack: Vec<(Path<'a, N, E, G>, NodeIndex)>,
-    reached: BTreeSet<NodeIndex>,
-    _p: PhantomData<(N, E)>,
+    reached: HashSet<NodeRef<'a, N>>,
+    stack: Vec<(Vec<EdgeRef<'a, N, E>>, NodeRef<'a, N>)>,
 }
 
-impl<'a, N, E, G: Graph<N, E>> Iterator for ReachableFrom<'a, N, E, G> {
-    type Item = (Path<'a, N, E, G>, NodeRef<'a, N>);
+impl<'a, G, N, E> Iterator for ReachableFrom<'a, G, N, E>
+where
+    G: Graph<N, E>,
+{
+    type Item = (Path<'a, N, E>, NodeRef<'a, N>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let (path, node) = self.stack.pop()?;
 
-        for edge in self
-            .graph
-            .edges_from(node)
-            .filter(|e| !self.reached.contains(&e.target_index()))
-        {
-            let mut path_to_next = path.clone();
-            path_to_next.push(edge.index());
-            self.stack.push((path_to_next, edge.target_index()));
+        for edge in self.graph.edges_from(node) {
+            if !self.reached.contains(&edge.target()) {
+                let mut new_path = path.clone();
+                new_path.push(edge);
+                self.stack.push((new_path, edge.target()));
+            }
         }
 
         self.reached.insert(node);
-        Some((path, self.graph.node(node).unwrap()))
+        Some((Path::new(path), node))
     }
 }
 
-pub trait GraphBuilder<N, E> {
-    type Output;
+pub trait Builder<N, E> {
+    type TargetGraph: Graph<N, E>;
 
-    fn new() -> Self;
-
-    fn add_edge(&mut self, source: N, contents: E, target: N);
+    fn add_edge(&mut self, source: N, edge: E, target: N);
     fn add_node(&mut self, node: N);
-    fn build(self) -> Self::Output;
+
     fn clear(&mut self);
-
-    fn from_graph<G>(g: &G) -> Self
-    where
-        G: Graph<N, E>,
-        Self: Sized,
-        N: Clone,
-        E: Clone,
-    {
-        let mut builder = Self::new();
-
-        g.edges().for_each(|e| {
-            builder.add_edge(
-                e.source().contents().clone(),
-                e.contents().clone(),
-                e.target().contents().clone(),
-            )
-        });
-
-        g.nodes()
-            .for_each(|n| builder.add_node(n.contents().clone()));
-
-        builder
-    }
+    fn build(&mut self, start_node: N, end_nodes: impl IntoIterator<Item = N>)
+        -> Self::TargetGraph;
 }

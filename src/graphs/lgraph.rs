@@ -1,26 +1,26 @@
-use std::{collections::BTreeSet, marker::PhantomData};
+use std::marker::PhantomData;
 
-use super::graph_trait::{EdgeRef, Graph, GraphBuilder, NodeIndex, NodeRef};
+use super::{
+    graph_trait::{Builder, Graph},
+    refs::{EdgeRef, NodeRef, Path},
+    state_machine::StateMachine,
+};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BracketType {
+    Open,
+    Close,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Bracket {
     index: usize,
-    is_opening: bool,
-}
-
-impl Bracket {
-    pub fn new(index: usize, is_opening: bool) -> Self {
-        Self { index, is_opening }
-    }
-    pub fn index(&self) -> usize {
-        self.index
-    }
-    pub fn is_opening(&self) -> bool {
-        self.is_opening
-    }
+    open: BracketType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BracketStack {}
+
 pub struct Item<E> {
     item: Option<E>,
     bracket: Bracket,
@@ -31,66 +31,109 @@ impl<E> Item<E> {
         Self { item, bracket }
     }
 
-    pub fn item(&self) -> Option<&E> {
-        self.item.as_ref()
+    pub fn item(&self) -> &Option<E> {
+        &self.item
     }
 
-    pub fn bracket(&self) -> &Bracket {
-        &self.bracket
+    pub fn bracket(&self) -> Bracket {
+        self.bracket
+    }
+
+    pub fn as_ref(&self) -> Item<&E> {
+        Item {
+            item: self.item.as_ref(),
+            bracket: self.bracket,
+        }
     }
 }
 
-pub struct LGraph<N, E, G> {
+pub struct Memory<'a, N> {
+    node: &'a N,
+    stack: BracketStack,
+}
+
+impl<'a, N> Clone for Memory<'a, N> {
+    fn clone(&self) -> Self {
+        Self {
+            node: self.node,
+            stack: self.stack.clone(),
+        }
+    }
+}
+
+impl<'a, N> Memory<'a, N> {
+    pub fn node(&self) -> &'a N {
+        self.node
+    }
+
+    pub fn stack(&self) -> &BracketStack {
+        &self.stack
+    }
+}
+
+pub struct LGraph<N, E, G>
+where
+    G: Graph<N, Item<E>>,
+{
     graph: G,
-    start_node: NodeIndex,
-    end_nodes: BTreeSet<NodeIndex>,
     _p: PhantomData<(N, E)>,
+}
+
+impl<'a, N, E, G> LGraph<Memory<'a, N>, &'a E, G>
+where
+    G: Graph<Memory<'a, N>, Item<&'a E>>,
+{
+    pub fn regular_image<'b, B>(
+        &self,
+        builder: &mut B,
+    ) -> StateMachine<Memory<'a, N>, Option<&'a E>, B::TargetGraph>
+    where
+        B: Builder<Memory<'a, N>, Option<&'a E>>,
+    {
+        builder.clear();
+
+        for edge in self.edges() {
+            builder.add_edge(
+                edge.source().contents().clone(),
+                *edge.contents().item(),
+                edge.target().contents().clone(),
+            );
+        }
+
+        for node in self.nodes() {
+            builder.add_node(node.contents().clone());
+        }
+
+        StateMachine::new(builder.build(
+            self.start_node().contents().clone(),
+            self.end_nodes().map(|n| n.contents()).cloned(),
+        ))
+    }
 }
 
 impl<N, E, G> LGraph<N, E, G>
 where
     G: Graph<N, Item<E>>,
 {
-    pub fn start_node(&self) -> NodeRef<N> {
-        self.graph.node(self.start_node).unwrap()
-    }
-    pub fn end_nodes(&self) -> impl Iterator<Item = NodeRef<N>> + '_ {
-        self.end_nodes.iter().map(|n| self.graph.node(*n).unwrap())
-    }
-    pub fn is_ned_node(&self, node: NodeIndex) -> bool {
-        self.end_nodes.contains(&node)
-    }
-
-    pub fn new_unchecked<B, G0>(
-        graph: G0,
-        start_node: N,
-        end_nodes: impl IntoIterator<Item = N>,
-    ) -> Self
-    where
-        G0: Graph<N, Item<E>>,
-        N: Eq + Clone,
-        E: Clone,
-        B: GraphBuilder<N, Item<E>, Output = G>,
-    {
-        let mut builder = B::from_graph(&graph);
-        builder.add_node(start_node.clone());
-        let end_nodes = end_nodes.into_iter().collect::<Vec<_>>();
-        for end_node in end_nodes.iter() {
-            builder.add_node(end_node.clone());
-        }
-
-        let graph = builder.build();
-
+    pub fn new(graph: G) -> Self {
         Self {
-            start_node: graph.node_with_contents(&start_node).unwrap().index(),
-            end_nodes: end_nodes
-                .into_iter()
-                .map(|node| graph.node_with_contents(&node).map(|n| n.index()))
-                .collect::<Option<BTreeSet<_>>>()
-                .unwrap(),
             graph,
             _p: PhantomData,
         }
+    }
+
+    pub fn stack_core(&self, w: usize, d: usize) -> impl Iterator<Item = Path<N, E>> {
+        [].into_iter()
+    }
+
+    pub fn normal_form<'a, B>(
+        &'a self,
+        builder: &mut B,
+    ) -> LGraph<Memory<'a, N>, &'a E, B::TargetGraph>
+    where
+        B: Builder<Memory<'a, N>, Item<&'a E>>,
+    {
+        todo!()
     }
 }
 
@@ -98,19 +141,19 @@ impl<N, E, G> Graph<N, Item<E>> for LGraph<N, E, G>
 where
     G: Graph<N, Item<E>>,
 {
-    fn edges<'a>(&'a self) -> Box<dyn Iterator<Item = EdgeRef<'a, N, Item<E>>> + 'a>
-    where
-        Item<E>: 'a,
-        N: 'a,
-    {
-        self.graph.edges()
+    fn start_node(&self) -> NodeRef<'_, N> {
+        self.graph.start_node()
     }
 
-    fn nodes<'a>(&'a self) -> Box<dyn Iterator<Item = NodeRef<'a, N>> + 'a>
-    where
-        Item<E>: 'a,
-        N: 'a,
-    {
+    fn is_end_node(&self, node: NodeRef<'_, N>) -> bool {
+        self.graph.is_end_node(node)
+    }
+
+    fn nodes(&self) -> Box<dyn Iterator<Item = NodeRef<'_, N>> + '_> {
         self.graph.nodes()
+    }
+
+    fn edges(&self) -> Box<dyn Iterator<Item = EdgeRef<'_, N, Item<E>>> + '_> {
+        self.graph.edges()
     }
 }
