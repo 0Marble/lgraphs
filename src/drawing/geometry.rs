@@ -61,6 +61,15 @@ impl Vec2 {
             y: -self.x,
         }
     }
+    pub fn rotate(&self, angle: f32) -> Vec2 {
+        Vec2::new(
+            angle.cos() * self.x - angle.sin() * self.y,
+            angle.sin() * self.x + angle.cos() * self.y,
+        )
+    }
+    pub fn as_tuple(&self) -> (f32, f32) {
+        (self.x, self.y)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -95,15 +104,13 @@ impl Rect {
     pub fn center(&self) -> Vec2 {
         Vec2::new((self.x1 + self.x2) * 0.5, (self.y1 + self.y2) * 0.5)
     }
-    pub fn center_rect(&self, width: f32, height: f32) -> Rect {
-        let dw = self.width() - width;
-        let dh = self.height() - height;
-
+    pub fn rect_at(&self, width: f32, height: f32, u: f32, v: f32) -> Rect {
+        let pt = self.uv(u, v);
         Rect::new(
-            self.x1 + dw * 0.5,
-            self.y1 + dh * 0.5,
-            self.x2 - dw * 0.5,
-            self.y2 - dh * 0.5,
+            pt.x - width * 0.5,
+            pt.y - height * 0.5,
+            pt.x + width * 0.5,
+            pt.y + height * 0.5,
         )
     }
 }
@@ -120,19 +127,20 @@ impl Circle {
         Self { x, y, r }
     }
     pub fn polar(&self, r: f32, theta: f32) -> Vec2 {
-        let x = f32::cos(theta) * r;
-        let y = f32::sin(theta) * r;
+        let x = f32::cos(theta) * r * self.r;
+        let y = f32::sin(theta) * r * self.r;
         self.center() + Vec2::new(x, y)
     }
     pub fn center(&self) -> Vec2 {
         Vec2::new(self.x, self.y)
     }
-    pub fn center_rect(&self, width: f32, height: f32) -> Rect {
+    pub fn rect_at(&self, width: f32, height: f32, r: f32, theta: f32) -> Rect {
+        let pt = self.polar(r, theta);
         Rect::new(
-            self.center().x - width * 0.5,
-            self.center().y - height * 0.5,
-            self.center().x + width * 0.5,
-            self.center().y + height * 0.5,
+            pt.x - width * 0.5,
+            pt.y - height * 0.5,
+            pt.x + width * 0.5,
+            pt.y + height * 0.5,
         )
     }
     pub fn bounds(&self) -> Rect {
@@ -149,9 +157,9 @@ impl Circle {
         Line::new(start.x, start.y, point.x, point.y)
     }
     pub fn line_between(&self, other: Self) -> Line {
-        let dir = other.center() - self.center();
-        let start = self.center() + dir.normalize() * self.r;
-        let end = other.center() - dir.normal() * other.r;
+        let dir = (other.center() - self.center()).normalize();
+        let start = self.center() + dir * self.r;
+        let end = other.center() - dir * other.r;
         Line::new(start.x, start.y, end.x, end.y)
     }
 }
@@ -177,12 +185,13 @@ impl Line {
     pub fn t(&self, t: f32) -> Vec2 {
         (self.end() - self.start()) * t + self.start()
     }
-    pub fn center_rect(&self, width: f32, height: f32) -> Rect {
+    pub fn rect_at(&self, width: f32, height: f32, t: f32) -> Rect {
+        let pt = self.t(t);
         Rect::new(
-            self.t(0.5).x - width * 0.5,
-            self.t(0.5).y - height * 0.5,
-            self.t(0.5).x + width * 0.5,
-            self.t(0.5).y + height * 0.5,
+            pt.x - width * 0.5,
+            pt.y - height * 0.5,
+            pt.x + width * 0.5,
+            pt.y + height * 0.5,
         )
     }
     pub fn bounds(&self) -> Rect {
@@ -190,5 +199,65 @@ impl Line {
     }
     pub fn len(&self) -> f32 {
         (self.end() - self.start()).len()
+    }
+    pub fn reverse(&self) -> Line {
+        Line {
+            x0: self.x1,
+            y0: self.y1,
+            x1: self.x0,
+            y1: self.y0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Curve {
+    pub p1: Vec2,
+    pub p2: Vec2,
+    pub p3: Vec2,
+    pub p4: Vec2,
+}
+
+impl Curve {
+    pub fn from_points(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2) -> Self {
+        Self { p1, p2, p3, p4 }
+    }
+
+    pub fn t(&self, t: f32) -> Vec2 {
+        self.p1 * (1.0 - t) * (1.0 - t) * (1.0 - t)
+            + self.p2 * 3.0 * (1.0 - t) * (1.0 - t) * t
+            + self.p3 * 3.0 * t * t * (1.0 - t)
+            + self.p4 * t * t * t
+    }
+
+    pub fn bounds(&self) -> Rect {
+        Rect::new(
+            [self.p1.x, self.p2.x, self.p3.x, self.p4.x]
+                .into_iter()
+                .reduce(|a, b| if a < b { a } else { b })
+                .unwrap(),
+            [self.p1.y, self.p2.y, self.p3.y, self.p4.y]
+                .into_iter()
+                .reduce(|a, b| if a < b { a } else { b })
+                .unwrap(),
+            [self.p1.x, self.p2.x, self.p3.x, self.p4.x]
+                .into_iter()
+                .reduce(|a, b| if a > b { a } else { b })
+                .unwrap(),
+            [self.p1.y, self.p2.y, self.p3.y, self.p4.y]
+                .into_iter()
+                .reduce(|a, b| if a > b { a } else { b })
+                .unwrap(),
+        )
+    }
+
+    pub fn rect_at(&self, width: f32, height: f32, t: f32) -> Rect {
+        let pt = self.t(t);
+        Rect::new(
+            pt.x - width * 0.5,
+            pt.y - height * 0.5,
+            pt.x + width * 0.5,
+            pt.y + height * 0.5,
+        )
     }
 }

@@ -8,15 +8,17 @@ use crate::graphs::{
 use super::{djikstra::djikstra, geometry::*};
 
 pub trait Layout<'a, N, E, G> {
-    fn node(&self, node: NodeRef<'a, N>) -> Circle;
+    fn node(&self, node: NodeRef<'a, N>) -> Option<Circle>;
     fn graph(&self) -> &'a G;
     fn width(&self) -> f32;
     fn height(&self) -> f32;
+    fn spacing(&self) -> f32;
 
     fn start(&self) -> Vec2;
     fn end(&self) -> Vec2;
 }
 
+#[derive(Debug)]
 pub struct DefaultLayout<'a, N, E, G>
 where
     G: Graph<N, E>,
@@ -38,6 +40,7 @@ where
 {
     pub fn new(node_radius: f32, spacing: f32, graph: &'a G) -> Self {
         let distances = djikstra(graph);
+
         let mut grouped_distances = HashMap::new();
         for (path, dist, node) in distances {
             let entry: &mut Vec<(Path<N, E>, NodeRef<N>)> =
@@ -45,15 +48,22 @@ where
             entry.push((path, node));
         }
 
-        let horizontal_count = grouped_distances.keys().cloned().max().unwrap_or_default();
+        let horizontal_count = grouped_distances
+            .keys()
+            .cloned()
+            .max()
+            .map(|m| m + 1)
+            .unwrap_or_default();
         let vertical_count = grouped_distances
             .iter()
-            .max_by_key(|(_, nodes)| nodes.len())
             .map(|(_, nodes)| nodes.len())
+            .max()
             .unwrap_or_default();
 
-        let width = (horizontal_count + 1) as f32 * spacing + horizontal_count as f32 * node_radius;
-        let height = (vertical_count + 1) as f32 * spacing + vertical_count as f32 * node_radius;
+        let width =
+            (horizontal_count + 1) as f32 * spacing + (2 * horizontal_count) as f32 * node_radius;
+        let height =
+            (vertical_count + 1) as f32 * spacing + (2 * vertical_count) as f32 * node_radius;
 
         Self {
             width,
@@ -74,23 +84,19 @@ impl<'a, N, E, G> Layout<'a, N, E, G> for DefaultLayout<'a, N, E, G>
 where
     G: Graph<N, E>,
 {
-    fn node(&self, node: NodeRef<'a, N>) -> Circle {
-        let (x, y) = if let Some(d) = self.distances.iter().find_map(|(dist, nodes)| {
+    fn node(&self, node: NodeRef<'a, N>) -> Option<Circle> {
+        let (x, y) = self.distances.iter().find_map(|(dist, nodes)| {
             nodes
                 .iter()
                 .enumerate()
                 .find(|(_, n)| n == &&node)
                 .map(|(i, _)| (*dist, i))
-        }) {
-            d
-        } else {
-            return Circle::new(0.0, 0.0, 0.0);
-        };
+        })?;
 
-        let x = (x + 1) as f32 * self.spacing + x as f32 * self.node_radius;
-        let y = (y + 1) as f32 * self.spacing + y as f32 * self.node_radius;
+        let x = (x + 1) as f32 * self.spacing + (2 * x + 1) as f32 * self.node_radius;
+        let y = (y + 1) as f32 * self.spacing + (2 * y + 1) as f32 * self.node_radius;
 
-        Circle::new(x, y, self.node_radius)
+        Some(Circle::new(x, y, self.node_radius))
     }
 
     fn graph(&self) -> &'a G {
@@ -99,6 +105,10 @@ where
 
     fn width(&self) -> f32 {
         self.width
+    }
+
+    fn spacing(&self) -> f32 {
+        self.spacing
     }
 
     fn height(&self) -> f32 {

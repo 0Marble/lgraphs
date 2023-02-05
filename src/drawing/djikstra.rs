@@ -14,6 +14,12 @@ enum Distance {
     Finite(usize),
 }
 
+impl Distance {
+    fn is_infinite(&self) -> bool {
+        matches!(self, Self::Infinite)
+    }
+}
+
 impl Add<Distance> for Distance {
     type Output = Distance;
 
@@ -33,7 +39,7 @@ impl PartialOrd for Distance {
             (Distance::Infinite, Distance::Infinite) => None,
             (Distance::Infinite, Distance::Finite(_)) => Some(std::cmp::Ordering::Greater),
             (Distance::Finite(_), Distance::Infinite) => Some(std::cmp::Ordering::Less),
-            (Distance::Finite(a), Distance::Finite(b)) => Some(a.cmp(b)),
+            (Distance::Finite(a), Distance::Finite(b)) => a.partial_cmp(b),
         }
     }
 }
@@ -55,27 +61,28 @@ where
         distances.insert(node, (Distance::Infinite, vec![]));
     }
 
-    while let Some((node, (dist, path))) =
-        distances.iter().filter(|(n, _)| !reached.contains(n)).fold(
-            distances.iter().find(|(n, _)| !reached.contains(n)),
-            |acc, (node, dist_path)| match acc {
-                Some((acc_node, acc_dist_path)) => {
-                    let (acc_dist, _) = acc_dist_path;
-                    let (dist, _) = dist_path;
-                    match acc_dist.partial_cmp(dist) {
-                        Some(std::cmp::Ordering::Less) => Some((acc_node, acc_dist_path)),
-                        Some(_) => Some((node, dist_path)),
-                        None => None,
-                    }
+    loop {
+        let mut min: Option<(NodeRef<_>, Distance, _)> = None;
+        for (node, (dist, path)) in &distances {
+            if reached.contains(node) {
+                continue;
+            }
+
+            if let Some((_, min_dist, _)) = min {
+                if min_dist.partial_cmp(dist) == Some(std::cmp::Ordering::Greater) {
+                    min = Some((*node, *dist, path));
                 }
-                None => None,
-            },
-        )
-    {
-        reached.insert(*node);
+            } else if dist != &Distance::Infinite {
+                min = Some((*node, *dist, path));
+            }
+        }
+
+        let Some((node, dist, path)) = min else {break;};
+
+        reached.insert(node);
         let path = path.clone();
-        let node = *node;
-        let dist = *dist;
+        let node = node;
+        let dist = dist;
 
         for edge in graph.edges_from(node) {
             let (target_dist, _) = distances.get(&edge.target()).unwrap();
@@ -90,9 +97,46 @@ where
 
     distances
         .into_iter()
+        .filter(|(_, (dist, _))| !dist.is_infinite())
         .map(|(node, (_, path))| {
             let dist = path.len();
             (Path::new(path), dist, node)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::graphs::{default::DefaultBuilder, graph_trait::Builder};
+
+    use super::djikstra;
+
+    #[test]
+    fn shortest() {
+        let edges = [('a', 'b'), ('b', 'c'), ('c', 'a'), ('a', 'd')];
+        let mut builder = DefaultBuilder::default();
+        for (from, to) in edges {
+            builder.add_edge(from, (), to);
+        }
+        let graph = builder.build('a', ['d']);
+        let distances = djikstra(&graph);
+
+        dbg!(&distances);
+
+        let find = |node_name: char| {
+            distances
+                .iter()
+                .find(|(_, _, n)| n.contents() == &node_name)
+                .unwrap()
+        };
+        let (_, a_dist, _) = find('a');
+        let (_, b_dist, _) = find('b');
+        let (_, c_dist, _) = find('c');
+        let (_, d_dist, _) = find('d');
+
+        assert_eq!(*a_dist, 0);
+        assert_eq!(*b_dist, 1);
+        assert_eq!(*c_dist, 2);
+        assert_eq!(*d_dist, 1);
+    }
 }
