@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use imageproc::{
     drawing::{
         draw_cubic_bezier_curve_mut, draw_hollow_circle_mut, draw_hollow_rect_mut, draw_text_mut,
@@ -19,74 +21,59 @@ use lgraphs::{
 use image::{Rgb, RgbImage};
 use rusttype::{Font, Scale};
 
-fn get_graph() -> impl Graph<i32, Item<char>> {
+fn edge(
+    from: i32,
+    item: Option<char>,
+    index: usize,
+    open: bool,
+    to: i32,
+) -> (i32, Item<char>, i32) {
+    (
+        from,
+        Item::new(
+            item,
+            Bracket::new(
+                index,
+                if open {
+                    BracketType::Open
+                } else {
+                    BracketType::Close
+                },
+            ),
+        ),
+        to,
+    )
+}
+
+fn example_2() -> LGraph<i32, char, impl Graph<i32, Item<char>>> {
     let edges = [
-        (1, Item::new(None, Bracket::new(1, BracketType::Open)), 2),
-        (
-            2,
-            Item::new(Some('a'), Bracket::new(2, BracketType::Open)),
-            2,
-        ),
-        (
-            2,
-            Item::new(Some('b'), Bracket::new(3, BracketType::Open)),
-            3,
-        ),
-        (3, Item::new(None, Bracket::new(3, BracketType::Close)), 4),
-        (
-            4,
-            Item::new(Some('a'), Bracket::new(2, BracketType::Close)),
-            4,
-        ),
-        (
-            4,
-            Item::new(Some('b'), Bracket::new(3, BracketType::Open)),
-            5,
-        ),
-        (5, Item::new(None, Bracket::new(3, BracketType::Close)), 6),
-        (6, Item::new(None, Bracket::new(2, BracketType::Close)), 6),
-        (6, Item::new(None, Bracket::new(1, BracketType::Close)), 10),
-        (
-            4,
-            Item::new(Some('a'), Bracket::new(1, BracketType::Close)),
-            7,
-        ),
-        (
-            7,
-            Item::new(Some('a'), Bracket::new(3, BracketType::Open)),
-            8,
-        ),
-        (8, Item::new(None, Bracket::new(3, BracketType::Close)), 7),
-        (
-            7,
-            Item::new(Some('b'), Bracket::new(3, BracketType::Open)),
-            9,
-        ),
-        (9, Item::new(None, Bracket::new(3, BracketType::Close)), 10),
+        edge(1, Some('a'), 0, true, 1),
+        edge(1, Some('b'), 0, false, 2),
     ];
     let mut builder = DefaultBuilder::default();
     for (source, item, target) in edges {
         builder.add_edge(source, item, target);
     }
-    LGraph::new(builder.build(1, [10]))
+    LGraph::new(builder.build(1, [2]))
 }
 
-fn main() {
-    let node_radius = 50.0;
-    let spacing = 60.0;
-    let text_scale = 15.0;
-
-    let graph = get_graph();
-    let layout = MinGridLayout::new(node_radius, spacing, &graph);
-    let commands = draw_graph(&layout, text_scale, 3, 5);
-
+fn render_graph<'a, N, E, G, L>(layout: &L, file_name: &str) -> Result<(), impl std::error::Error>
+where
+    N: Display + 'a,
+    E: Display + 'a,
+    G: Graph<N, E> + 'a,
+    L: Layout<'a, N, E, G>,
+{
     let mut image = RgbImage::from_pixel(
         layout.width().ceil() as u32,
         layout.height().ceil() as u32,
         Rgb([255, 255, 255]),
     );
+
+    let text_scale = 15.0;
     let font = Vec::from(include_bytes!("../../fonts/gnu-free/FreeMonoBoldOblique.otf") as &[u8]);
-    let font = Font::try_from_vec(font).expect("Could not load font");
+    let font = Font::try_from_vec(font).unwrap();
+    let commands = draw_graph(layout, text_scale, 3, 10);
 
     for command in commands {
         match command {
@@ -124,5 +111,67 @@ fn main() {
         }
     }
 
-    image.save("images/g1.png").expect("Could not save image");
+    image.save(file_name)
+}
+
+fn main() {
+    let node_radius = 50.0;
+    let spacing = 60.0;
+
+    let g = example_2();
+    {
+        let layout = MinGridLayout::new(node_radius, spacing, &g);
+        render_graph(&layout, "images/graph.png").expect("Could not render")
+    }
+
+    let normal = g.normal_form(&mut DefaultBuilder::default());
+    {
+        let layout = MinGridLayout::new(node_radius, spacing, &normal);
+        render_graph(&layout, "images/normal.png").expect("Could not render")
+    }
+
+    let img = normal.regular_image(&mut DefaultBuilder::default());
+    let no_nones = img.remove_nones(&mut DefaultBuilder::default());
+    {
+        let layout = MinGridLayout::new(node_radius, spacing, &no_nones);
+        render_graph(&layout, "images/img.png").expect("Could not render")
+    }
+
+    let determined = no_nones.determine(&mut DefaultBuilder::default());
+    {
+        let a = determined.rebuild_to_node_nums(&mut DefaultBuilder::default());
+        let layout = MinGridLayout::new(node_radius, spacing, &a);
+        render_graph(&layout, "images/determined.png").expect("Could not render")
+    }
+
+    let minimized = determined.minimize(&mut DefaultBuilder::default());
+    {
+        let a = minimized.rebuild_to_node_nums(&mut DefaultBuilder::default());
+        let layout = MinGridLayout::new(node_radius, spacing, &a);
+        render_graph(&layout, "images/minimized.png").expect("Could not render")
+    }
+
+    // let graph = example_2();
+    // {
+    //     let layout = MinGridLayout::new(node_radius, spacing, &graph);
+    //     render_graph(&layout, "images/g.png").expect("Could not render")
+    // }
+
+    // for d in 1.. {
+    //     let c = graph.stack_core_graph(1, d, &mut DefaultBuilder::default());
+    //     let layout = MinGridLayout::new(node_radius, spacing, &c);
+    //     render_graph(&layout, format!("images/c1{d}.png").as_str()).expect("Could not render");
+
+    //     if graph
+    //         .nodes()
+    //         .all(|node| c.nodes().any(|n| n.contents().node() == node.contents()))
+    //     {
+    //         let dc = graph.delta_stack_core_graph(1, d + 1, &mut DefaultBuilder::default());
+    //         let layout = MinGridLayout::new(node_radius, spacing, &dc);
+    //         render_graph(&layout, format!("images/dc1{}.png", d + 1).as_str())
+    //             .expect("Could not render");
+
+    //         break;
+    //     }
+    // }
 }

@@ -96,18 +96,15 @@ fn draw_node<'a, N, E, G, L>(
     L: Layout<'a, N, E, G>,
 {
     let Some(pos) = layout.node(node) else {return};
-    let bounds = pos.bounds();
-    let allowed_char_count =
-        ((bounds.width() / text_size) as usize).clamp(min_char_count, max_char_count);
-    let text: String = node
-        .contents()
-        .to_string()
-        .chars()
-        .take(allowed_char_count)
-        .collect();
-    let bounds = pos.rect_at((text.len() as f32) * text_size, text_size, 0.0, 0.0);
+    let full_text = node.contents().to_string();
+    let allowed_char_count = full_text.len().clamp(min_char_count, max_char_count);
+    let cropped_text: String = full_text.chars().take(allowed_char_count).collect();
+    let bounds = pos.rect_at((cropped_text.len() as f32) * text_size, text_size, 0.0, 0.0);
     commands.push(DrawCommand::Circle(pos));
-    commands.push(DrawCommand::Text { bounds, text });
+    commands.push(DrawCommand::Text {
+        bounds,
+        text: cropped_text,
+    });
 }
 
 fn draw_edge<'a, N, E, G, L>(

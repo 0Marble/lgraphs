@@ -168,52 +168,37 @@ where
         builder.clear();
         let mut end_nodes = vec![];
 
-        let mut translation: Vec<Vec<NodeRef<N>>> = vec![];
-        let translate = |mut node: Vec<NodeRef<'a, N>>,
-                         translation: &mut Vec<Vec<NodeRef<'a, N>>>| {
-            node.sort();
-            node.dedup();
+        for mut source in Subsets::new(self.nodes()) {
+            source.sort();
+            source.dedup();
 
-            translation
-                .iter()
-                .enumerate()
-                .find(|(_, n)| node.iter().zip(n.iter()).all(|(a, b)| a == b))
-                .map(|(i, _)| i)
-                .unwrap_or_else(|| {
-                    translation.push(node);
-                    translation.len() - 1
-                })
-        };
-
-        for new_node in Subsets::new(self.nodes()) {
             let mut targets = vec![];
-            for item in new_node
+            for item in source
                 .iter()
                 .flat_map(|n| self.edges_from(*n))
                 .map(|e| e.contents())
             {
-                let target: Vec<_> = new_node
+                let mut target: Vec<_> = source
                     .iter()
                     .flat_map(|n| self.edges_from_with(*n, item))
                     .map(|e| e.target())
                     .collect();
 
-                let target_name = translate(target, &mut translation);
-                targets.push((item, target_name));
+                target.sort();
+                target.dedup();
+
+                targets.push((item, target));
             }
 
-            let source = translate(new_node, &mut translation);
-            if translation[source].iter().any(|n| self.is_end_node(*n)) {
-                end_nodes.push(NodeSet::new(
-                    translation[source].iter().map(|n| n.contents()),
-                ));
+            if source.iter().any(|n| self.is_end_node(*n)) {
+                end_nodes.push(NodeSet::new(source.iter().map(|n| n.contents())));
             }
 
             for (item, target) in targets {
                 builder.add_edge(
-                    NodeSet::new(translation[source].iter().map(|n| n.contents())),
+                    NodeSet::new(source.iter().map(|n| n.contents())),
                     item,
-                    NodeSet::new(translation[target].iter().map(|n| n.contents())),
+                    NodeSet::new(target.iter().map(|n| n.contents())),
                 );
             }
         }

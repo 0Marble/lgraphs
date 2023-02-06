@@ -162,9 +162,37 @@ impl<'a, N, E> Clone for EdgeRef<'a, N, E> {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct Path<'a, N, E> {
     edges: Vec<EdgeRef<'a, N, E>>,
+}
+
+impl<'a, N, E> Eq for Path<'a, N, E> {}
+
+impl<'a, N, E> PartialEq for Path<'a, N, E> {
+    fn eq(&self, other: &Self) -> bool {
+        self.edges == other.edges
+    }
+}
+
+impl<'a, N, E> Hash for Path<'a, N, E> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.edges.hash(state)
+    }
+}
+
+impl<'a, N, E> Default for Path<'a, N, E> {
+    fn default() -> Self {
+        Self { edges: vec![] }
+    }
+}
+
+impl<'a, N, E> Clone for Path<'a, N, E> {
+    fn clone(&self) -> Self {
+        Self {
+            edges: self.edges.to_vec(),
+        }
+    }
 }
 
 impl<'a, N, E> Path<'a, N, E> {
@@ -190,5 +218,42 @@ impl<'a, N, E> Path<'a, N, E> {
         'a: 'b,
     {
         self.edges.iter().cloned()
+    }
+
+    pub fn push(&self, edge: EdgeRef<'a, N, E>) -> Self {
+        let mut edges = self.edges.clone();
+        edges.push(edge);
+        Self { edges }
+    }
+
+    pub fn push_mut(&mut self, edge: EdgeRef<'a, N, E>) {
+        self.edges.push(edge)
+    }
+
+    pub fn len(&self) -> usize {
+        self.edges.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.edges.is_empty()
+    }
+
+    pub fn sub_path(&self, from: NodeRef<'a, N>, to: NodeRef<'a, N>) -> Option<Path<'a, N, E>> {
+        let mut path = None;
+        for edge in self.edges() {
+            if edge.source() == from {
+                path = Some(Path::default());
+            }
+
+            if let Some(path) = path.as_mut() {
+                path.push_mut(edge);
+            }
+
+            if edge.target() == to {
+                break;
+            }
+        }
+
+        path
     }
 }

@@ -66,18 +66,27 @@ pub trait Graph<N, E> {
         Box::new(self.edges_from(node).filter(|e| contents.eq(e.contents())))
     }
 
-    fn rebuild_to_refs<'a, B>(&'a self, builder: &mut B) -> B::TargetGraph
+    fn rebuild_to_node_nums<'a, B>(&'a self, builder: &mut B) -> B::TargetGraph
     where
-        B: Builder<NodeRef<'a, N>, EdgeRef<'a, N, E>>,
+        B: Builder<usize, E>,
+        N: 'a,
+        E: Clone,
     {
         builder.clear();
         for edge in self.edges() {
-            builder.add_edge(edge.source(), edge, edge.target());
+            builder.add_edge(
+                edge.source_index(),
+                edge.contents().clone(),
+                edge.target_index(),
+            );
         }
         for node in self.nodes() {
-            builder.add_node(node);
+            builder.add_node(node.index());
         }
-        builder.build(self.start_node(), self.end_nodes())
+        builder.build(
+            self.start_node().index(),
+            self.end_nodes().map(|n| n.index()),
+        )
     }
 
     fn node_count(&self) -> usize {

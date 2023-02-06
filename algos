@@ -123,27 +123,67 @@ fn graph_from_paths(g: Graph, p: [Path]):
     at the end return g.
 */
 fn normal_form(g: Graph):
-    core11 = g.graph_from_paths(g.core(1, 1))
-    core12 = g.graph_from_paths(g.core(1, 2))        
-    res = core11
 
-    for (q, a) in core11.nodes():
-        if !core12.has_node((q, a)): continue
-        for (node, ab) in core12.nodes():
-            if node != q: continue
-            if !ab.has_prefix(a): continue;
-            b = ab.strip_prefix(a)
-            
-            if b.cur_max_depth() > 1: I dont know...
+    core = None
+    dcore = None
+    for d in 1..:
+        core = g.core(1, d)
+        
+        all_nodes_found = true
+        for node in g.nodes():
+            node_found = false
+            for mem in core.nodes():
+                if mem.node == node: 
+                    node_found = true
+                    break
+            if !node_found:
+                all_nodes_found = false
+                break
+        if all_nodes_found: 
+            dcore = (g.core(1, d+1) - core).paths() // all paths in core(1, d+1) that are not in core(1, d)
+            break 
 
-            if let Some(edge) = core12.edge_from_to((q, ab), (q, a)):
-                if edge.brackets() == b:
-                    res.add_edge((q, a), edge.items(), (q, a))
-            else if let Some(edge) = core12.edge_from_to((q, a), (q, ab)):
-                if edge.brackets() == b:
-                    res.add_edge((q, a), edge.items(), (q, a))    
-            
-    return res
+    cyclepaths = []
+    // find segments ... - (a, s1) - p1 - (a, s1s2) - ... - (b, s1s2) - p2 - (b, s1)
+    // and transform them to ... - (a, s1) - p1 - (a, s1) - ... - (b, s1) - p2 - (b, s1) - ...
+    // should we rename the nodes in p1 and p2?
+
+    for path in dcore:
+        left_pairs = []
+        right_pairs = []
+
+        for (i, a, s1) in path.enumerate():
+            if !core.has((a, s1)): continue
+            for (j, c, s) in path.enumerate().skip(i):
+                if core.has((c, s)): continue
+                if c == a and s1.is_prefix_of(s):
+                    left_pairs.push((a, s1, s))
+
+        for (i, b, s1s2) in path.enumerate():
+            if core.has((b, s1s2)): continue
+            for (j, c, s) in path.enumerate().skip(i):
+                if !core.has((c, s)): continue
+                if c == b and s.is_prefix_of(s1s2):
+                    left_pairs.push((b, s1s2, s))
+        
+        pairs = []
+        for ((a, as1, as1s2), (b, bs1s2, bs1)) in all_combinations(left_pairs, right_pairs):
+            if as1 == bs1 && as1s2 == bs1s2:
+                pairs.push((a, b, as1, as1s2))
+        
+        for (a, b, s1, s1s2) in pairs:
+            p1 = []
+            for edge in path[(a, s1)..(a, s1s2)]:
+                p1.push(edge)
+
+            p2 = []
+            for edge in path[(b, s1s2)..(b, s1)]:
+                p2.push(edge)
+
+            core.add_path((a, s1), p1, (a, s1))
+            core.add_path((b, s1), p2, (b, s1))
+
+    return core
 
 
 
