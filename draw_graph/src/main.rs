@@ -1,7 +1,6 @@
 use imageproc::{
     drawing::{
-        draw_cubic_bezier_curve_mut, draw_filled_circle_mut, draw_hollow_circle_mut,
-        draw_hollow_rect_mut, draw_line_segment_mut, draw_text_mut,
+        draw_cubic_bezier_curve_mut, draw_hollow_circle_mut, draw_hollow_rect_mut, draw_text_mut,
     },
     rect::Rect,
 };
@@ -121,18 +120,6 @@ fn main() {
                     curve.p3.as_tuple(),
                     Rgb([0, 0, 0]),
                 );
-                // draw_filled_circle_mut(
-                //     &mut image,
-                //     (curve.p2.x as i32, curve.p2.y as i32),
-                //     3,
-                //     Rgb([255, 0, 0]),
-                // );
-                // draw_filled_circle_mut(
-                //     &mut image,
-                //     (curve.p3.x as i32, curve.p3.y as i32),
-                //     3,
-                //     Rgb([255, 0, 0]),
-                // );
             }
         }
     }
