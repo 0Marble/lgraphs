@@ -6,7 +6,7 @@ use crate::graphs::{
 };
 
 use super::{
-    geometry::{Circle, Curve, Line, Rect, Vec2},
+    geometry::{Circle, Curve, Rect, Vec2},
     layout::Layout,
 };
 
@@ -14,12 +14,16 @@ use super::{
 pub enum DrawCommand {
     Rect(Rect),
     Circle(Circle),
-    Line(Line),
     Curve(Curve),
     Text { bounds: Rect, text: String },
 }
 
-pub fn draw_graph<'a, N, E, G, L>(layout: &L, text_size: f32) -> Vec<DrawCommand>
+pub fn draw_graph<'a, N, E, G, L>(
+    layout: &L,
+    text_size: f32,
+    min_char_count: usize,
+    max_char_count: usize,
+) -> Vec<DrawCommand>
 where
     G: Graph<N, E>,
     N: Display,
@@ -31,10 +35,24 @@ where
 {
     let mut commands = vec![];
     for node in layout.graph().nodes() {
-        draw_node(&mut commands, node, layout, text_size);
+        draw_node(
+            &mut commands,
+            node,
+            layout,
+            text_size,
+            min_char_count,
+            max_char_count,
+        );
     }
     for edge in layout.graph().edges() {
-        draw_edge(&mut commands, edge, layout, text_size);
+        draw_edge(
+            &mut commands,
+            edge,
+            layout,
+            text_size,
+            min_char_count,
+            max_char_count,
+        );
     }
     for end_node in layout.graph().end_nodes() {
         let Some(pos) = layout.node(end_node) else {continue;};
@@ -69,6 +87,8 @@ fn draw_node<'a, N, E, G, L>(
     node: NodeRef<'a, N>,
     layout: &L,
     text_size: f32,
+    min_char_count: usize,
+    max_char_count: usize,
 ) where
     G: Graph<N, E>,
     N: Display,
@@ -77,7 +97,8 @@ fn draw_node<'a, N, E, G, L>(
 {
     let Some(pos) = layout.node(node) else {return};
     let bounds = pos.bounds();
-    let allowed_char_count = ((bounds.width() / text_size) as usize).clamp(1, 5);
+    let allowed_char_count =
+        ((bounds.width() / text_size) as usize).clamp(min_char_count, max_char_count);
     let text: String = node
         .contents()
         .to_string()
@@ -94,31 +115,41 @@ fn draw_edge<'a, N, E, G, L>(
     edge: EdgeRef<'a, N, E>,
     layout: &L,
     text_size: f32,
+    min_char_count: usize,
+    max_char_count: usize,
 ) where
     G: Graph<N, E>,
     N: Display,
     E: Display,
     L: Layout<'a, N, E, G>,
 {
-    if edge.source() == edge.target() {
-        draw_loop(commands, edge, layout, text_size);
-        return;
-    }
+    let line = if edge.source() == edge.target() {
+        let Some(pos) = layout.node(edge.source()) else {return;};
 
-    let Some(from) = layout.node(edge.source()) else {return};
-    let Some(to) = layout.node(edge.target()) else {return};
-    let line = from.line_between(to);
+        let angle = std::f32::consts::FRAC_PI_8;
+        let dir = Vec2::new(0.0, pos.r).normalize();
+        let left = dir.rotate(angle);
+        let right = dir.rotate(-angle);
 
-    draw_arrow(
-        commands,
-        line.start(),
-        line.end(),
-        line.t(0.25),
-        line.t(0.75),
-        layout,
-    );
+        let p1 = pos.center() + left * pos.r;
+        let p4 = pos.center() + right * pos.r;
+        let p2 = pos.center() + left * (pos.r + 0.5 * layout.spacing());
+        let p3 = pos.center() + right * (pos.r + 0.5 * layout.spacing());
+        Curve::from_points(p1, p2, p3, p4)
+    } else {
+        let Some(from) = layout.node(edge.source()) else {return};
+        let Some(to) = layout.node(edge.target()) else {return};
+        let dist = from.dist(to);
+        let droopiness =
+            (dist / Vec2::new(layout.width(), layout.height()).len()).powf(0.7) * layout.spacing();
+
+        from.line_between(to, droopiness)
+    };
+
+    draw_arrow(commands, line.p1, line.p4, line.p2, line.p3, layout);
     let bounds = line.bounds();
-    let allowed_char_count = ((bounds.width() / text_size) as usize).clamp(1, 5);
+    let allowed_char_count =
+        ((bounds.width() / text_size) as usize).clamp(min_char_count, max_char_count);
     let text: String = edge
         .contents()
         .to_string()
@@ -126,44 +157,6 @@ fn draw_edge<'a, N, E, G, L>(
         .take(allowed_char_count)
         .collect();
     let bounds = line.rect_at((text.len() as f32) * text_size, text_size, 0.3);
-    commands.push(DrawCommand::Text { bounds, text });
-}
-
-fn draw_loop<'a, N, E, G, L>(
-    commands: &mut Vec<DrawCommand>,
-    edge: EdgeRef<'a, N, E>,
-    layout: &L,
-    text_size: f32,
-) where
-    G: Graph<N, E>,
-    N: Display,
-    E: Display,
-    L: Layout<'a, N, E, G>,
-{
-    let Some(pos) = layout.node(edge.source()) else {return;};
-
-    let angle = std::f32::consts::FRAC_PI_8;
-    let dir = Vec2::new(0.0, pos.r).normalize();
-    let left = dir.rotate(angle);
-    let right = dir.rotate(-angle);
-
-    let p1 = pos.center() + left * pos.r;
-    let p4 = pos.center() + right * pos.r;
-    let p2 = pos.center() + left * (pos.r + 0.5 * layout.spacing());
-    let p3 = pos.center() + right * (pos.r + 0.5 * layout.spacing());
-
-    draw_arrow(commands, p1, p4, p2, p3, layout);
-    let curve = Curve::from_points(p1, p2, p3, p4);
-
-    let bounds = curve.bounds();
-    let allowed_char_count = ((bounds.width() / text_size) as usize).clamp(1, 5);
-    let text: String = edge
-        .contents()
-        .to_string()
-        .chars()
-        .take(allowed_char_count)
-        .collect();
-    let bounds = curve.rect_at((text.len() as f32) * text_size, text_size, 0.3);
     commands.push(DrawCommand::Text { bounds, text });
 }
 
@@ -190,20 +183,9 @@ fn draw_arrow<'a, N, E, G, L>(
 
     let dir = ((p4 - p3) * 3.0).normalize();
     let angle = std::f32::consts::FRAC_PI_6;
-    let diag = Vec2::new(layout.width(), layout.height()).len();
-    let len = (dir.len() * 0.1).clamp(diag * 0.01, diag * 0.2);
+    let len = (dir.len() * 0.1).clamp(layout.spacing() * 0.1, layout.spacing() * 0.2);
     let left = (dir * -1.0).rotate(angle).normalize() * len;
     let right = (dir * -1.0).rotate(-angle).normalize() * len;
-    commands.push(DrawCommand::Line(Line::new(
-        (p4 + left).x,
-        (p4 + left).y,
-        p4.x,
-        p4.y,
-    )));
-    commands.push(DrawCommand::Line(Line::new(
-        (p4 + right).x,
-        (p4 + right).y,
-        p4.x,
-        p4.y,
-    )));
+    commands.push(DrawCommand::Curve(Curve::straight(p4 + left, p4)));
+    commands.push(DrawCommand::Curve(Curve::straight(p4 + right, p4)));
 }

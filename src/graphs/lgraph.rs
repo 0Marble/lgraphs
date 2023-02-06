@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{fmt::Display, marker::PhantomData};
 
 use super::{
     graph_trait::{Builder, Graph},
@@ -18,12 +18,46 @@ pub struct Bracket {
     open: BracketType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BracketStack {}
+impl Bracket {
+    pub fn new(index: usize, open: BracketType) -> Self {
+        Self { index, open }
+    }
+}
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BracketStack {
+    stack: Vec<usize>,
+}
+
+impl BracketStack {
+    pub fn brackets(&self) -> impl Iterator<Item = Bracket> + '_ {
+        self.stack.iter().cloned().map(|i| Bracket {
+            index: i,
+            open: BracketType::Open,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item<E> {
     item: Option<E>,
     bracket: Bracket,
+}
+
+impl<E> Display for Item<E>
+where
+    E: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.item() {
+            Some(item) => write!(f, "{}", item),
+            None => write!(f, "_"),
+        }?;
+        match self.bracket.open {
+            BracketType::Open => write!(f, "[{}", self.bracket.index),
+            BracketType::Close => write!(f, "]{}", self.bracket.index),
+        }
+    }
 }
 
 impl<E> Item<E> {
@@ -47,9 +81,24 @@ impl<E> Item<E> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct Memory<'a, N> {
     node: &'a N,
     stack: BracketStack,
+}
+
+impl<'a, N> Display for Memory<'a, N>
+where
+    N: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{},", self.node())?;
+        for bracket in self.stack().brackets() {
+            write!(f, "{}", bracket.index)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a, N> Clone for Memory<'a, N> {

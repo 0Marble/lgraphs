@@ -151,62 +151,24 @@ impl Circle {
             self.y + self.r,
         )
     }
-    pub fn to_point(&self, point: Vec2) -> Line {
+    pub fn to_point(&self, point: Vec2) -> Curve {
         let dir = point - self.center();
         let start = self.center() + dir.normalize() * self.r;
-        Line::new(start.x, start.y, point.x, point.y)
+        Curve::straight(start, point)
     }
-    pub fn line_between(&self, other: Self) -> Line {
+    pub fn line_between(&self, other: Self, droopiness: f32) -> Curve {
         let dir = (other.center() - self.center()).normalize();
         let start = self.center() + dir * self.r;
         let end = other.center() - dir * other.r;
-        Line::new(start.x, start.y, end.x, end.y)
-    }
-}
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Line {
-    pub x0: f32,
-    pub y0: f32,
-    pub x1: f32,
-    pub y1: f32,
-}
-
-impl Line {
-    pub fn new(x0: f32, y0: f32, x1: f32, y1: f32) -> Self {
-        Self { x0, y0, x1, y1 }
+        let normal = dir.normal();
+        let len = self.dist(other);
+        let p2 = start + dir * len * 0.25 + normal * droopiness;
+        let p3 = start + dir * len * 0.75 + normal * droopiness;
+        Curve::from_points(start, p2, p3, end)
     }
-    pub fn start(&self) -> Vec2 {
-        Vec2::new(self.x0, self.y0)
-    }
-    pub fn end(&self) -> Vec2 {
-        Vec2::new(self.x1, self.y1)
-    }
-    pub fn t(&self, t: f32) -> Vec2 {
-        (self.end() - self.start()) * t + self.start()
-    }
-    pub fn rect_at(&self, width: f32, height: f32, t: f32) -> Rect {
-        let pt = self.t(t);
-        Rect::new(
-            pt.x - width * 0.5,
-            pt.y - height * 0.5,
-            pt.x + width * 0.5,
-            pt.y + height * 0.5,
-        )
-    }
-    pub fn bounds(&self) -> Rect {
-        Rect::new(self.x0, self.y0, self.x1, self.y1)
-    }
-    pub fn len(&self) -> f32 {
-        (self.end() - self.start()).len()
-    }
-    pub fn reverse(&self) -> Line {
-        Line {
-            x0: self.x1,
-            y0: self.y1,
-            x1: self.x0,
-            y1: self.y0,
-        }
+    pub fn dist(&self, other: Self) -> f32 {
+        (self.center() - other.center()).len() - self.r - other.r
     }
 }
 
@@ -219,6 +181,14 @@ pub struct Curve {
 }
 
 impl Curve {
+    pub fn straight(from: Vec2, to: Vec2) -> Self {
+        let p1 = from;
+        let p4 = to;
+        let p2 = p1 + (p4 - p1) * 0.25;
+        let p3 = p1 + (p4 - p1) * 0.75;
+        Self::from_points(p1, p2, p3, p4)
+    }
+
     pub fn from_points(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2) -> Self {
         Self { p1, p2, p3, p4 }
     }
@@ -259,5 +229,22 @@ impl Curve {
             pt.x + width * 0.5,
             pt.y + height * 0.5,
         )
+    }
+
+    pub fn start(&self) -> Vec2 {
+        self.p1
+    }
+
+    pub fn end(&self) -> Vec2 {
+        self.p4
+    }
+
+    pub fn reverse(&self) -> Curve {
+        Curve {
+            p1: self.p4,
+            p2: self.p3,
+            p3: self.p2,
+            p4: self.p1,
+        }
     }
 }

@@ -1,58 +1,85 @@
 use imageproc::{
     drawing::{
-        draw_cubic_bezier_curve_mut, draw_hollow_circle_mut, draw_hollow_rect_mut,
-        draw_line_segment_mut, draw_text_mut,
+        draw_cubic_bezier_curve_mut, draw_filled_circle_mut, draw_hollow_circle_mut,
+        draw_hollow_rect_mut, draw_line_segment_mut, draw_text_mut,
     },
     rect::Rect,
 };
 use lgraphs::{
     drawing::{
         drawer::{draw_graph, DrawCommand},
-        layout::{DefaultLayout, Layout},
+        layout::{Layout, MinGridLayout},
     },
     graphs::{
-        default::{DefaultBuilder, DefaultGraph},
+        default::DefaultBuilder,
         graph_trait::{Builder, Graph},
-        state_machine::StateMachine,
+        lgraph::{Bracket, BracketType, Item, LGraph},
     },
 };
 
 use image::{Rgb, RgbImage};
 use rusttype::{Font, Scale};
 
-fn get_graph() -> StateMachine<char, i32, DefaultGraph<char, i32>> {
+fn get_graph() -> impl Graph<i32, Item<char>> {
     let edges = [
-        ('a', 0, 'b'),
-        ('a', 1, 'd'),
-        ('b', 0, 'b'),
-        ('b', 1, 'c'),
-        ('c', 0, 'd'),
-        ('d', 0, 'd'),
-        ('d', 1, 'e'),
-        ('e', 0, 'b'),
-        ('e', 1, 'c'),
-        ('c', 1, 'e'),
-        ('f', 0, 'c'),
-        ('f', 1, 'g'),
-        ('g', 0, 'f'),
-        ('g', 1, 'e'),
+        (1, Item::new(None, Bracket::new(1, BracketType::Open)), 2),
+        (
+            2,
+            Item::new(Some('a'), Bracket::new(2, BracketType::Open)),
+            2,
+        ),
+        (
+            2,
+            Item::new(Some('b'), Bracket::new(3, BracketType::Open)),
+            3,
+        ),
+        (3, Item::new(None, Bracket::new(3, BracketType::Close)), 4),
+        (
+            4,
+            Item::new(Some('a'), Bracket::new(2, BracketType::Close)),
+            4,
+        ),
+        (
+            4,
+            Item::new(Some('b'), Bracket::new(3, BracketType::Open)),
+            5,
+        ),
+        (5, Item::new(None, Bracket::new(3, BracketType::Close)), 6),
+        (6, Item::new(None, Bracket::new(2, BracketType::Close)), 6),
+        (6, Item::new(None, Bracket::new(1, BracketType::Close)), 10),
+        (
+            4,
+            Item::new(Some('a'), Bracket::new(1, BracketType::Close)),
+            7,
+        ),
+        (
+            7,
+            Item::new(Some('a'), Bracket::new(3, BracketType::Open)),
+            8,
+        ),
+        (8, Item::new(None, Bracket::new(3, BracketType::Close)), 7),
+        (
+            7,
+            Item::new(Some('b'), Bracket::new(3, BracketType::Open)),
+            9,
+        ),
+        (9, Item::new(None, Bracket::new(3, BracketType::Close)), 10),
     ];
     let mut builder = DefaultBuilder::default();
     for (source, item, target) in edges {
         builder.add_edge(source, item, target);
     }
-
-    StateMachine::new(builder.build('a', ['c', 'e']))
+    LGraph::new(builder.build(1, [10]))
 }
 
 fn main() {
     let node_radius = 50.0;
     let spacing = 60.0;
-    let text_scale = 20.0;
+    let text_scale = 15.0;
 
     let graph = get_graph();
-    let layout = DefaultLayout::new(node_radius, spacing, &graph);
-    let commands = draw_graph(&layout, text_scale);
+    let layout = MinGridLayout::new(node_radius, spacing, &graph);
+    let commands = draw_graph(&layout, text_scale, 3, 5);
 
     let mut image = RgbImage::from_pixel(
         layout.width().ceil() as u32,
@@ -76,12 +103,6 @@ fn main() {
                 circ.r as i32,
                 Rgb([0, 0, 0]),
             ),
-            DrawCommand::Line(line) => draw_line_segment_mut(
-                &mut image,
-                (line.start().x, line.start().y),
-                (line.end().x, line.end().y),
-                Rgb([0, 0, 0]),
-            ),
             DrawCommand::Text { bounds, text } => draw_text_mut(
                 &mut image,
                 Rgb([0, 0, 0]),
@@ -91,14 +112,28 @@ fn main() {
                 &font,
                 text.as_str(),
             ),
-            DrawCommand::Curve(curve) => draw_cubic_bezier_curve_mut(
-                &mut image,
-                curve.p1.as_tuple(),
-                curve.p4.as_tuple(),
-                curve.p2.as_tuple(),
-                curve.p3.as_tuple(),
-                Rgb([0, 0, 0]),
-            ),
+            DrawCommand::Curve(curve) => {
+                draw_cubic_bezier_curve_mut(
+                    &mut image,
+                    curve.p1.as_tuple(),
+                    curve.p4.as_tuple(),
+                    curve.p2.as_tuple(),
+                    curve.p3.as_tuple(),
+                    Rgb([0, 0, 0]),
+                );
+                // draw_filled_circle_mut(
+                //     &mut image,
+                //     (curve.p2.x as i32, curve.p2.y as i32),
+                //     3,
+                //     Rgb([255, 0, 0]),
+                // );
+                // draw_filled_circle_mut(
+                //     &mut image,
+                //     (curve.p3.x as i32, curve.p3.y as i32),
+                //     3,
+                //     Rgb([255, 0, 0]),
+                // );
+            }
         }
     }
 
