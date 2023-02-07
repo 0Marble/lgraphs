@@ -89,7 +89,8 @@ impl BracketStack {
     }
 
     pub fn has_prefix(&self, prefix: &Self) -> bool {
-        self.stack.strip_prefix(prefix.stack.as_slice()).is_some()
+        self.stack.len() > prefix.stack.len()
+            && self.stack.strip_prefix(prefix.stack.as_slice()).is_some()
     }
 
     pub fn len(&self) -> usize {
@@ -162,6 +163,18 @@ impl<'a, N> Memory<&'a N> {
     }
 }
 
+impl<'a, N> Memory<NodeRef<'a, N>> {
+    pub fn deref(&self) -> Memory<N>
+    where
+        N: Clone,
+    {
+        Memory {
+            node: self.node.contents().clone(),
+            stack: self.stack.clone(),
+        }
+    }
+}
+
 impl<N> Display for Memory<N>
 where
     N: Display,
@@ -210,7 +223,7 @@ where
     fn path_to_memories<'a, 'b>(
         &'a self,
         path: &'b Path<'a, N, Item<E>>,
-    ) -> impl Iterator<Item = Memory<&'a N>> + 'b
+    ) -> impl Iterator<Item = Memory<NodeRef<'a, N>>> + 'b
     where
         'a: 'b,
     {
@@ -224,10 +237,7 @@ where
                     })
                 },
             )))
-            .map(|(node, stack)| Memory {
-                node: node.contents(),
-                stack,
-            })
+            .map(|(node, stack)| Memory { node, stack })
     }
 
     fn is_in_core<'a>(&'a self, path: &Path<'a, N, Item<E>>, w: usize, d: usize) -> bool
@@ -327,197 +337,435 @@ where
         self.graph_from_paths(paths, builder)
     }
 
+    fn path_nests<'a>(
+        &'a self,
+        path: &Path<'a, N, Item<E>>,
+    ) -> HashMap<(NodeRef<'a, N>, NodeRef<'a, N>), HashSet<(BracketStack, BracketStack)>> {
+        let mems: Vec<_> = self.path_to_memories(path).collect();
+
+        let mut left_pairs = vec![];
+        let mut right_pairs = vec![];
+
+        for (i, a) in mems.iter().enumerate() {
+            for (j, other) in mems.iter().enumerate().skip(i + 1) {
+                if other.node() == a.node() {
+                    if other.stack().has_prefix(a.stack()) {
+                        left_pairs.push((j, *a.node(), a.stack().clone(), other.stack().clone()));
+                    }
+                    break;
+                }
+            }
+        }
+
+        for (i, b) in mems.iter().enumerate() {
+            for other in mems.iter().skip(i + 1) {
+                if other.node() == b.node() {
+                    if b.stack().has_prefix(other.stack()) {
+                        right_pairs.push((i, *b.node(), b.stack().clone(), other.stack().clone()));
+                    }
+                    break;
+                }
+            }
+        }
+
+        let mut pairs: HashMap<(NodeRef<N>, NodeRef<N>), HashSet<(BracketStack, BracketStack)>> =
+            HashMap::new();
+        for ((j, a, as1, as1s2), (i, b, bs1s2, bs1)) in AllPairs::new(left_pairs, right_pairs) {
+            if as1 == bs1 && as1s2 == bs1s2 && j < i {
+                let cur_nest = pairs.entry((a, b)).or_default();
+                cur_nest.insert((as1, as1s2));
+            }
+        }
+
+        pairs
+    }
+
+    fn all_nests<'a, 'b>(
+        &'a self,
+        paths: impl Iterator<Item = &'b Path<'a, N, Item<E>>>,
+    ) -> HashMap<
+        (NodeRef<N>, NodeRef<N>),
+        HashMap<(BracketStack, BracketStack), Vec<&'b Path<'a, N, Item<E>>>>,
+    >
+    where
+        'a: 'b,
+    {
+        paths.map(|path| (self.path_nests(path), path)).fold(
+            HashMap::new(),
+            |mut all_nests, (path_nests, path)| {
+                for (pair, instances) in path_nests {
+                    let cur_nest = all_nests.entry(pair).or_default();
+                    for (s1, s1s2) in instances {
+                        let paths_with_nest = cur_nest.entry((s1, s1s2)).or_default();
+                        paths_with_nest.push(path);
+                    }
+                }
+                all_nests
+            },
+        )
+    }
+
+    fn prep_cores<'a>(
+        &'a self,
+    ) -> (
+        Vec<Path<'a, N, Item<E>>>,
+        Vec<Path<'a, N, Item<E>>>,
+        Vec<Path<'a, N, Item<E>>>,
+    )
+    where
+        N: Hash + Debug,
+        E: Debug,
+    {
+        let mut d = 0;
+        loop {
+            d += 1;
+            let core0_paths = self.stack_core(1, d).collect::<HashSet<_>>();
+            if !self.nodes().all(|node| {
+                core0_paths
+                    .iter()
+                    .any(|path| path.nodes().any(|n| n == node))
+            }) {
+                continue;
+            }
+
+            let core0_nests = self.all_nests(core0_paths.iter());
+            let core0 = self.graph_from_paths(
+                core0_paths.clone().into_iter(),
+                &mut DefaultBuilder::default(),
+            );
+
+            println!("core0 d={d}");
+            for ((a, b), instances) in &core0_nests {
+                for (s1, s1s2) in instances.keys() {
+                    println!(
+                        "Nest {:?}-{:?}, {:?}-{:?}",
+                        a.contents(),
+                        b.contents(),
+                        s1,
+                        s1s2
+                    );
+                }
+            }
+
+            loop {
+                d += 1;
+                let core1_paths = self.stack_core(1, d).collect::<Vec<_>>();
+                let dcore_paths = core1_paths
+                    .clone()
+                    .into_iter()
+                    .filter(|path| !core0_paths.contains(path))
+                    .collect::<Vec<_>>();
+                let dcore_nests = self.all_nests(dcore_paths.iter());
+
+                println!("core1 d={d}");
+                for ((a, b), instances) in &dcore_nests {
+                    for (s1, s1s2) in instances.keys() {
+                        println!(
+                            "Nest {:?}-{:?}, {:?}-{:?}",
+                            a.contents(),
+                            b.contents(),
+                            s1,
+                            s1s2
+                        );
+                    }
+                }
+
+                if d > 20 {
+                    panic!()
+                }
+
+                let mut all_increased = true;
+                for (nest, instances) in &dcore_nests {
+                    let core0_instances: HashSet<_> = core0_nests
+                        .get(nest)
+                        .map(|i| i.keys().collect())
+                        .unwrap_or_default();
+                    let dcore_instances: HashSet<_> = instances.keys().collect();
+                    let gained = dcore_instances
+                        .difference(&core0_instances)
+                        .collect::<Vec<_>>();
+                    if gained.is_empty() {
+                        all_increased = false;
+                        break;
+                    }
+
+                    for (_, s1s2) in gained {
+                        if core0
+                            .node_with_contents(&Memory {
+                                node: nest.0.contents().clone(),
+                                stack: s1s2.clone(),
+                            })
+                            .is_some()
+                        {
+                            println!("Node {:?}{:?} in core0", nest.0.contents(), s1s2);
+                            all_increased = false;
+                            break;
+                        }
+                        if core0
+                            .node_with_contents(&Memory {
+                                node: nest.1.contents().clone(),
+                                stack: s1s2.clone(),
+                            })
+                            .is_some()
+                        {
+                            println!("Node {:?}{:?} in core0", nest.1.contents(), s1s2);
+                            all_increased = false;
+                            break;
+                        }
+                    }
+                }
+
+                if !all_increased {
+                    continue;
+                }
+
+                return (core0_paths.into_iter().collect(), core1_paths, dcore_paths);
+            }
+        }
+    }
+
+    fn nest_loops<'a>(
+        &'a self,
+        path: &Path<'a, N, Item<E>>,
+        a: NodeRef<'a, N>,
+        b: NodeRef<'a, N>,
+        s1: &BracketStack,
+        s1s2: &BracketStack,
+        mangled_count: &mut usize,
+    ) -> Vec<(Mangled<Memory<N>>, Item<E>, Mangled<Memory<N>>)> {
+        let mut transformed = vec![];
+
+        let mems: Vec<_> = self.path_to_memories(path).collect();
+
+        let mut p0 = vec![];
+        let mut p1 = vec![];
+        let mut mangled_p1 = vec![];
+        let mut p2 = vec![];
+        let mut p3 = vec![];
+        let mut mangled_p3 = vec![];
+        let mut p4 = vec![];
+        enum Stage {
+            BeforeLeft,
+            InLeft,
+            Middle,
+            InRight,
+            AfterRight,
+        }
+
+        let mut stage = Stage::BeforeLeft;
+        // let mut mangled_names = (*mangled_count..).flat_map(|m| once(m).chain(once(m)));
+
+        let mut mangled_from = *mangled_count;
+        let mut mangled_to = *mangled_count;
+        for (from, edge, to) in path
+            .edges()
+            .enumerate()
+            .map(|(i, e)| (&mems[i], e, &mems[i + 1]))
+        {
+            match stage {
+                Stage::BeforeLeft => {
+                    p0.push((
+                        Mangled::Node(from.deref()),
+                        edge.contents().clone(),
+                        Mangled::Node(to.deref()),
+                    ));
+                    if to.stack() == s1 && to.node() == &a {
+                        stage = Stage::InLeft;
+                    }
+                }
+                Stage::InLeft => {
+                    p1.push((
+                        Mangled::Node(from.deref()),
+                        edge.contents().clone(),
+                        Mangled::Node(to.deref()),
+                    ));
+                    if to.stack() == s1s2 && to.node() == &a {
+                        if !(from.stack() == s1 && to.node() == &a) {
+                            mangled_p1.push((
+                                Mangled::Mangled(mangled_from),
+                                edge.contents().clone(),
+                                Mangled::Node(Memory {
+                                    node: a.contents().clone(),
+                                    stack: s1s2.clone(),
+                                }),
+                            ))
+                        } else {
+                            mangled_p1.push((
+                                Mangled::Node(Memory {
+                                    node: a.contents().clone(),
+                                    stack: s1s2.clone(),
+                                }),
+                                edge.contents().clone(),
+                                Mangled::Node(Memory {
+                                    node: a.contents().clone(),
+                                    stack: s1s2.clone(),
+                                }),
+                            ))
+                        }
+
+                        stage = Stage::Middle;
+                        continue;
+                    }
+
+                    if from.stack() == s1 && from.node() == &a {
+                        mangled_p1.push((
+                            Mangled::Node(Memory {
+                                node: a.contents().clone(),
+                                stack: s1s2.clone(),
+                            }),
+                            edge.contents().clone(),
+                            Mangled::Mangled(mangled_to),
+                        ));
+                        mangled_from = mangled_to;
+                        mangled_to += 1;
+                    } else {
+                        mangled_p1.push((
+                            Mangled::Mangled(mangled_from),
+                            edge.contents().clone(),
+                            Mangled::Mangled(mangled_to),
+                        ));
+                        mangled_from = mangled_to;
+                        mangled_to += 1;
+                    }
+                }
+                Stage::Middle => {
+                    p2.push((
+                        Mangled::Node(from.deref()),
+                        edge.contents().clone(),
+                        Mangled::Node(to.deref()),
+                    ));
+                    if to.stack() == s1s2 && to.node() == &b {
+                        stage = Stage::InRight;
+                    }
+                }
+                Stage::InRight => {
+                    p3.push((
+                        Mangled::Node(from.deref()),
+                        edge.contents().clone(),
+                        Mangled::Node(to.deref()),
+                    ));
+                    if to.stack() == s1 && to.node() == &b {
+                        if !(from.stack() == s1s2 && to.node() == &b) {
+                            mangled_p3.push((
+                                Mangled::Mangled(mangled_from),
+                                edge.contents().clone(),
+                                Mangled::Node(Memory {
+                                    node: b.contents().clone(),
+                                    stack: s1s2.clone(),
+                                }),
+                            ))
+                        } else {
+                            mangled_p3.push((
+                                Mangled::Node(Memory {
+                                    node: b.contents().clone(),
+                                    stack: s1s2.clone(),
+                                }),
+                                edge.contents().clone(),
+                                Mangled::Node(Memory {
+                                    node: b.contents().clone(),
+                                    stack: s1s2.clone(),
+                                }),
+                            ))
+                        }
+
+                        stage = Stage::AfterRight;
+                        continue;
+                    }
+
+                    if from.stack() == s1s2 && from.node() == &b {
+                        mangled_p3.push((
+                            Mangled::Node(Memory {
+                                node: b.contents().clone(),
+                                stack: s1s2.clone(),
+                            }),
+                            edge.contents().clone(),
+                            Mangled::Mangled(mangled_to),
+                        ));
+                        mangled_from = mangled_to;
+                        mangled_to += 1;
+                    } else {
+                        mangled_p3.push((
+                            Mangled::Mangled(mangled_from),
+                            edge.contents().clone(),
+                            Mangled::Mangled(mangled_to),
+                        ));
+                        mangled_from = mangled_to;
+                        mangled_to += 1;
+                    }
+                }
+                Stage::AfterRight => {
+                    p4.push((
+                        Mangled::Node(from.deref()),
+                        edge.contents().clone(),
+                        Mangled::Node(to.deref()),
+                    ));
+                }
+            }
+        }
+
+        *mangled_count = mangled_to;
+        // p0 -> (a, s1) -> p1 -> (a, s1s2) -> p2 -> (b, s1s2) -> p3 -> (b, s1) -> p4
+        // =>
+        // p0 -> (a, s1) -> p1 -> (a, s1s2) -> mangle(p1) -> (a, s1s2) ->
+        //    -> p2 -> (b, s1s2) -> mangle(p3) -> (b, s1s2) -> p3 -> (b, s1) -> p4
+        transformed.append(&mut p0);
+        transformed.append(&mut p1);
+        transformed.append(&mut mangled_p1);
+        transformed.append(&mut p2);
+        transformed.append(&mut mangled_p3);
+        transformed.append(&mut p3);
+        transformed.append(&mut p4);
+
+        transformed
+    }
+
     pub fn normal_form<B>(&self, builder: &mut B) -> LGraph<Mangled<Memory<N>>, E, B::TargetGraph>
     where
         B: Builder<Mangled<Memory<N>>, Item<E>>,
         N: Hash,
-        E: Debug,
         N: Debug,
+        E: Debug,
     {
-        let prev_core;
-        let dcore: Vec<_>;
-        let core;
-
-        let mut d = 1;
-        loop {
-            let c_paths: HashSet<_> = self.stack_core(1, d).collect();
-
-            let dc: Vec<_> = self
-                .stack_core(1, d + 1)
-                .filter(|p| !c_paths.contains(p))
-                .collect();
-
-            let c = self.graph_from_paths(c_paths.into_iter(), &mut DefaultBuilder::default());
-
-            if self
-                .nodes()
-                .all(|node| c.nodes().any(|n| n.contents().node() == node.contents()))
-            {
-                core = self.stack_core_graph(1, d + 1, &mut DefaultBuilder::default());
-                prev_core = c;
-                dcore = dc;
-                break;
-            }
-            d += 1;
-        }
-
+        let (core0_paths, core1_paths, dcore_paths) = self.prep_cores();
+        let core1 = self.graph_from_paths(core1_paths.into_iter(), &mut DefaultBuilder::default());
         builder.clear();
-        for edge in core.edges() {
+        for edge in core1.edges() {
             builder.add_edge(
                 Mangled::Node(edge.source().contents().clone()),
                 edge.contents().clone(),
                 Mangled::Node(edge.target().contents().clone()),
             );
         }
-
-        for node in core.nodes() {
+        for node in core1.nodes() {
             builder.add_node(Mangled::Node(node.contents().clone()));
         }
 
+        let dcore_nests = self.all_nests(dcore_paths.iter());
+        let core0_nests = self.all_nests(core0_paths.iter());
+
         let mut mangled_count = 0;
-        for path in dcore {
-            let mems: Vec<_> = self.path_to_memories(&path).collect();
+        for (nest, dcore_instances) in &dcore_nests {
+            let core0_instances = core0_nests.get(nest);
+            let gained_nests = dcore_instances
+                .iter()
+                .filter(|(stacks, _)| core0_instances.map_or(true, |c| !c.contains_key(stacks)));
 
-            let has_node = |node: &N, stack: &BracketStack| {
-                prev_core
-                    .nodes()
-                    .any(|n| n.contents().node() == node && n.contents().stack() == stack)
-            };
+            let (a, b) = nest;
+            for ((s1, s1s2), paths) in gained_nests {
+                for path in paths {
+                    let new_edges = self.nest_loops(path, *a, *b, s1, s1s2, &mut mangled_count);
 
-            let mut left_pairs = vec![];
-            let mut right_pairs = vec![];
-
-            for (i, a) in mems.iter().enumerate() {
-                if !has_node(a.node(), a.stack()) {
-                    continue;
-                }
-                for (j, other) in mems.iter().enumerate().skip(i) {
-                    if has_node(other.node(), other.stack()) {
-                        continue;
+                    for (from, edge, to) in new_edges {
+                        builder.add_edge(from, edge, to);
                     }
-
-                    if other.node() == a.node() && other.stack().has_prefix(a.stack()) {
-                        left_pairs.push((j, a.node(), a.stack().clone(), other.stack().clone()));
-                    }
-                }
-            }
-
-            for (i, b) in mems.iter().enumerate() {
-                if has_node(b.node(), b.stack()) {
-                    continue;
-                }
-                for other in mems.iter().skip(i) {
-                    if !has_node(other.node(), other.stack()) {
-                        continue;
-                    }
-
-                    if other.node() == b.node() && b.stack().has_prefix(other.stack()) {
-                        right_pairs.push((i, b.node(), b.stack().clone(), other.stack().clone()));
-                    }
-                }
-            }
-
-            let mut pairs = vec![];
-            for ((j, a, as1, as1s2), (i, b, bs1s2, bs1)) in AllPairs::new(left_pairs, right_pairs) {
-                if as1 == bs1 && as1s2 == bs1s2 && j < i {
-                    pairs.push((a, b, as1, as1s2))
-                }
-            }
-
-            dbg!(&pairs);
-
-            for (a, b, s1, s1s2) in pairs {
-                let from = mems
-                    .iter()
-                    .enumerate()
-                    .find(|(_, mem)| mem.node() == a && mem.stack() == &s1)
-                    .map(|(i, _)| i)
-                    .unwrap();
-                let to = mems
-                    .iter()
-                    .enumerate()
-                    .find(|(_, mem)| mem.node() == a && mem.stack() == &s1s2)
-                    .map(|(i, _)| i)
-                    .unwrap();
-
-                let path: Vec<_> = path.edges().collect();
-
-                if from + 1 == to {
-                    builder.add_edge(
-                        Mangled::Node(mems[to].clone().deref()),
-                        path[from].contents().clone(),
-                        Mangled::Node(mems[to].clone().deref()),
-                    )
-                } else {
-                    builder.add_edge(
-                        Mangled::Node(mems[to].clone().deref()),
-                        path[from].contents().clone(),
-                        Mangled::Mangled(mangled_count),
-                    );
-
-                    for edge in &path[from + 1..to - 1] {
-                        builder.add_edge(
-                            Mangled::Mangled(mangled_count),
-                            edge.contents().clone(),
-                            Mangled::Mangled(mangled_count + 1),
-                        );
-                        mangled_count += 2;
-                    }
-
-                    builder.add_edge(
-                        Mangled::Mangled(mangled_count - 1),
-                        path[to - 1].contents().clone(),
-                        Mangled::Node(mems[to].clone().deref()),
-                    );
-                }
-
-                let from = mems
-                    .iter()
-                    .enumerate()
-                    .find(|(_, mem)| mem.node() == b && mem.stack() == &s1s2)
-                    .map(|(i, _)| i)
-                    .unwrap();
-                let to = mems
-                    .iter()
-                    .enumerate()
-                    .find(|(_, mem)| mem.node() == b && mem.stack() == &s1)
-                    .map(|(i, _)| i)
-                    .unwrap();
-                if from + 1 == to {
-                    builder.add_edge(
-                        Mangled::Node(mems[from].clone().deref()),
-                        path[from].contents().clone(),
-                        Mangled::Node(mems[from].clone().deref()),
-                    )
-                } else {
-                    builder.add_edge(
-                        Mangled::Node(mems[from].clone().deref()),
-                        path[from].contents().clone(),
-                        Mangled::Mangled(mangled_count),
-                    );
-
-                    for edge in &path[from + 1..to - 1] {
-                        builder.add_edge(
-                            Mangled::Mangled(mangled_count),
-                            edge.contents().clone(),
-                            Mangled::Mangled(mangled_count + 1),
-                        );
-                        mangled_count += 2;
-                    }
-
-                    builder.add_edge(
-                        Mangled::Mangled(mangled_count - 1),
-                        path[to - 1].contents().clone(),
-                        Mangled::Node(mems[from].clone().deref()),
-                    );
                 }
             }
         }
 
         LGraph::new(
             builder.build(
-                Mangled::Node(prev_core.start_node().contents().clone()),
-                prev_core
+                Mangled::Node(core1.start_node().contents().clone()),
+                core1
                     .end_nodes()
                     .map(|n| n.contents().clone())
                     .map(Mangled::Node),
@@ -669,8 +917,6 @@ mod tests {
     }
 
     fn example_1() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        todo!("Seems fine, but converting to DFA takes too long for some reason");
-
         let edges = [
             edge(1, None, 1, true, 2),
             edge(2, Some('a'), 2, true, 2),
@@ -693,20 +939,35 @@ mod tests {
     }
 
     fn example_2() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        todo!("Too complicated to analyze...");
-
+        // let edges = [
+        //     edge(1, None, 1, true, 2),
+        //     edge(2, Some('a'), 2, true, 3),
+        //     edge(3, None, 3, true, 4),
+        //     edge(4, None, 3, false, 2),
+        //     edge(2, None, 2, false, 5),
+        //     edge(5, None, 2, false, 6),
+        //     edge(6, None, 2, false, 7),
+        //     edge(7, None, 2, false, 7),
+        //     edge(7, None, 2, false, 8),
+        //     edge(8, None, 2, false, 9),
+        //     edge(9, None, 2, false, 10),
+        //     edge(10, None, 2, false, 11),
+        //     edge(11, None, 3, true, 12),
+        //     edge(12, None, 3, false, 10),
+        //     edge(10, None, 1, false, 13),
+        // ];
         let edges = [
             edge(1, None, 1, true, 2),
             edge(2, Some('a'), 2, true, 3),
             edge(3, None, 3, true, 4),
             edge(4, None, 3, false, 2),
-            edge(2, None, 2, false, 5),
-            edge(5, None, 2, false, 6),
-            edge(6, None, 2, false, 7),
+            edge(2, None, 2, false, 7),
+            // edge(5, None, 2, false, 6),
+            // edge(6, None, 2, false, 7),
             edge(7, None, 2, false, 7),
-            edge(7, None, 2, false, 8),
-            edge(8, None, 2, false, 9),
-            edge(9, None, 2, false, 10),
+            edge(7, None, 2, false, 10),
+            // edge(8, None, 2, false, 9),
+            // edge(9, None, 2, false, 10),
             edge(10, None, 2, false, 11),
             edge(11, None, 3, true, 12),
             edge(12, None, 3, false, 10),
@@ -755,8 +1016,6 @@ mod tests {
     }
 
     fn example_5() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        todo!("dcore is empty, because new information is uncovered every 2nd d value");
-
         let edges = [
             edge(1, None, 1, true, 2),
             edge(2, Some('a'), 2, true, 3),
@@ -793,8 +1052,6 @@ mod tests {
     }
 
     fn example_7() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        todo!("has an edge with b coming off from node 6 for some reason?? Also an unfinished mangled loop");
-
         let edges = [
             edge(1, None, 1, true, 2),
             edge(2, Some('a'), 2, true, 2),
@@ -815,7 +1072,6 @@ mod tests {
     }
 
     fn example_8() -> LGraph<i32, char, impl Graph<i32, Item<char>>> {
-        todo!("Correct but has an unfinished mangled loop");
         let edges = [
             edge(1, Some('a'), 1, true, 1),
             edge(1, Some('b'), 2, true, 2),

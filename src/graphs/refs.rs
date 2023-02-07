@@ -1,4 +1,4 @@
-use std::{hash::Hash, iter::once};
+use std::{hash::Hash, iter::once, ops::Index};
 
 #[derive(Debug)]
 pub struct NodeRef<'a, N> {
@@ -165,6 +165,14 @@ impl<'a, N, E> Clone for EdgeRef<'a, N, E> {
 #[derive(Debug)]
 pub struct Path<'a, N, E> {
     edges: Vec<EdgeRef<'a, N, E>>,
+}
+
+impl<'a, N, E> Index<usize> for Path<'a, N, E> {
+    type Output = EdgeRef<'a, N, E>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.edges[index]
+    }
 }
 
 impl<'a, N, E> Eq for Path<'a, N, E> {}

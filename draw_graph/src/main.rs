@@ -104,19 +104,16 @@ where
 
 fn get_graph() -> LGraph<i32, char, impl Graph<i32, Item<char>>> {
     let edges = [
-        edge(1, None, 1, true, 2),
-        edge(2, Some('a'), 2, true, 2),
-        edge(2, Some('b'), 3, true, 3),
-        edge(3, None, 3, false, 4),
-        edge(4, None, 2, false, 4),
-        edge(4, None, 1, false, 5),
-        edge(2, Some('c'), 3, true, 6),
-        edge(6, None, 3, false, 7),
-        edge(7, None, 2, false, 8),
-        edge(8, None, 2, false, 9),
-        edge(9, None, 2, false, 10),
-        edge(10, None, 1, false, 5),
+        edge(1, Some('a'), 1, true, 1),
+        edge(1, Some('b'), 2, true, 1),
+        edge(1, Some('c'), 0, true, 2),
+        edge(2, None, 0, false, 3),
+        edge(3, None, 1, false, 3),
+        edge(3, Some('c'), 0, true, 4),
+        edge(4, None, 0, false, 5),
+        edge(5, None, 2, false, 5),
     ];
+
     let mut builder = DefaultBuilder::default();
     for (source, item, target) in edges {
         builder.add_edge(source, item, target);
@@ -134,6 +131,28 @@ fn main() {
         render_graph(&layout, "images/graph.png").expect("Could not render")
     }
 
+    for d in 1..10 {
+        let c = g.stack_core_graph(1, d, &mut DefaultBuilder::default());
+        let layout = MinGridLayout::new(node_radius, spacing, &c);
+        render_graph(&layout, format!("images/c1{d}.png").as_str()).expect("Could not render");
+
+        // if g.nodes()
+        //     .all(|node| c.nodes().any(|n| n.contents().node() == node.contents()))
+        // {
+        //     let c = g.stack_core_graph(1, d + 1, &mut DefaultBuilder::default());
+        //     let layout = MinGridLayout::new(node_radius, spacing, &c);
+        //     render_graph(&layout, format!("images/c1{}.png", d + 1).as_str())
+        //         .expect("Could not render");
+
+        let dc = g.delta_stack_core_graph(1, d + 1, &mut DefaultBuilder::default());
+        let layout = MinGridLayout::new(node_radius, spacing, &dc);
+        render_graph(&layout, format!("images/dc1{}.png", d + 1).as_str())
+            .expect("Could not render");
+
+        //     break;
+        // }
+    }
+
     let normal = g.normal_form(&mut DefaultBuilder::default());
     {
         let layout = MinGridLayout::new(node_radius, spacing, &normal);
@@ -147,37 +166,15 @@ fn main() {
         render_graph(&layout, "images/img.png").expect("Could not render")
     }
 
-    for d in 1.. {
-        let c = g.stack_core_graph(1, d, &mut DefaultBuilder::default());
-        let layout = MinGridLayout::new(node_radius, spacing, &c);
-        render_graph(&layout, format!("images/c1{d}.png").as_str()).expect("Could not render");
+    // let determined = no_nones.determine(&mut DefaultBuilder::default());
+    // {
+    //     let layout = MinGridLayout::new(node_radius, spacing, &determined);
+    //     render_graph(&layout, "images/determined.png").expect("Could not render")
+    // }
 
-        if g.nodes()
-            .all(|node| c.nodes().any(|n| n.contents().node() == node.contents()))
-        {
-            let c = g.stack_core_graph(1, d + 1, &mut DefaultBuilder::default());
-            let layout = MinGridLayout::new(node_radius, spacing, &c);
-            render_graph(&layout, format!("images/c1{}.png", d + 1).as_str())
-                .expect("Could not render");
-
-            let dc = g.delta_stack_core_graph(1, d + 1, &mut DefaultBuilder::default());
-            let layout = MinGridLayout::new(node_radius, spacing, &dc);
-            render_graph(&layout, format!("images/dc1{}.png", d + 1).as_str())
-                .expect("Could not render");
-
-            break;
-        }
-    }
-
-    let determined = no_nones.determine(&mut DefaultBuilder::default());
-    {
-        let layout = MinGridLayout::new(node_radius, spacing, &determined);
-        render_graph(&layout, "images/determined.png").expect("Could not render")
-    }
-
-    let minimized = determined.minimize(&mut DefaultBuilder::default());
-    {
-        let layout = MinGridLayout::new(node_radius, spacing, &minimized);
-        render_graph(&layout, "images/minimized.png").expect("Could not render")
-    }
+    // let minimized = determined.minimize(&mut DefaultBuilder::default());
+    // {
+    //     let layout = MinGridLayout::new(node_radius, spacing, &minimized);
+    //     render_graph(&layout, "images/minimized.png").expect("Could not render")
+    // }
 }
