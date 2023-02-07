@@ -104,21 +104,24 @@ where
 
 fn get_graph() -> LGraph<i32, char, impl Graph<i32, Item<char>>> {
     let edges = [
-        edge(1, Some('a'), 1, true, 1),
-        edge(1, Some('b'), 2, true, 1),
-        edge(1, Some('c'), 0, true, 2),
-        edge(2, None, 0, false, 3),
-        edge(3, None, 1, false, 3),
-        edge(3, Some('c'), 0, true, 4),
-        edge(4, None, 0, false, 5),
-        edge(5, None, 2, false, 5),
+        edge(1, None, 1, true, 2),
+        edge(2, Some('a'), 2, true, 3),
+        edge(3, Some('b'), 3, true, 4),
+        edge(4, None, 3, false, 3),
+        edge(3, Some('c'), 4, true, 5),
+        edge(5, None, 3, true, 6),
+        edge(6, None, 3, false, 2),
+        edge(2, Some('d'), 3, true, 7),
+        edge(7, None, 3, false, 8),
+        edge(8, None, 2, false, 8),
+        edge(8, None, 4, false, 8),
+        edge(8, None, 1, false, 9),
     ];
-
     let mut builder = DefaultBuilder::default();
     for (source, item, target) in edges {
         builder.add_edge(source, item, target);
     }
-    LGraph::new(builder.build(1, [5]))
+    LGraph::new(builder.build(1, [9]))
 }
 
 fn main() {
@@ -128,13 +131,13 @@ fn main() {
     let g = get_graph();
     {
         let layout = MinGridLayout::new(node_radius, spacing, &g);
-        render_graph(&layout, "images/graph.png").expect("Could not render")
+        render_graph(&layout, "images/graph5.png").expect("Could not render")
     }
 
     for d in 1..10 {
         let c = g.stack_core_graph(1, d, &mut DefaultBuilder::default());
         let layout = MinGridLayout::new(node_radius, spacing, &c);
-        render_graph(&layout, format!("images/c1{d}.png").as_str()).expect("Could not render");
+        render_graph(&layout, format!("images/c1{d}-5.png").as_str()).expect("Could not render");
 
         // if g.nodes()
         //     .all(|node| c.nodes().any(|n| n.contents().node() == node.contents()))
@@ -146,7 +149,7 @@ fn main() {
 
         let dc = g.delta_stack_core_graph(1, d + 1, &mut DefaultBuilder::default());
         let layout = MinGridLayout::new(node_radius, spacing, &dc);
-        render_graph(&layout, format!("images/dc1{}.png", d + 1).as_str())
+        render_graph(&layout, format!("images/dc1{}-5.png", d + 1).as_str())
             .expect("Could not render");
 
         //     break;
@@ -156,14 +159,14 @@ fn main() {
     let normal = g.normal_form(&mut DefaultBuilder::default());
     {
         let layout = MinGridLayout::new(node_radius, spacing, &normal);
-        render_graph(&layout, "images/normal.png").expect("Could not render")
+        render_graph(&layout, "images/normal5.png").expect("Could not render")
     }
 
     let img = normal.regular_image(&mut DefaultBuilder::default());
     let no_nones = img.remove_nones(&mut DefaultBuilder::default());
     {
         let layout = MinGridLayout::new(node_radius, spacing, &no_nones);
-        render_graph(&layout, "images/img.png").expect("Could not render")
+        render_graph(&layout, "images/img5.png").expect("Could not render")
     }
 
     // let determined = no_nones.determine(&mut DefaultBuilder::default());

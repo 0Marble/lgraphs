@@ -470,10 +470,6 @@ where
                     }
                 }
 
-                if d > 20 {
-                    panic!()
-                }
-
                 let mut all_increased = true;
                 for (nest, instances) in &dcore_nests {
                     let core0_instances: HashSet<_> = core0_nests
@@ -553,7 +549,6 @@ where
         }
 
         let mut stage = Stage::BeforeLeft;
-        // let mut mangled_names = (*mangled_count..).flat_map(|m| once(m).chain(once(m)));
 
         let mut mangled_from = *mangled_count;
         let mut mangled_to = *mangled_count;
@@ -939,46 +934,7 @@ mod tests {
     }
 
     fn example_2() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        // let edges = [
-        //     edge(1, None, 1, true, 2),
-        //     edge(2, Some('a'), 2, true, 3),
-        //     edge(3, None, 3, true, 4),
-        //     edge(4, None, 3, false, 2),
-        //     edge(2, None, 2, false, 5),
-        //     edge(5, None, 2, false, 6),
-        //     edge(6, None, 2, false, 7),
-        //     edge(7, None, 2, false, 7),
-        //     edge(7, None, 2, false, 8),
-        //     edge(8, None, 2, false, 9),
-        //     edge(9, None, 2, false, 10),
-        //     edge(10, None, 2, false, 11),
-        //     edge(11, None, 3, true, 12),
-        //     edge(12, None, 3, false, 10),
-        //     edge(10, None, 1, false, 13),
-        // ];
-        let edges = [
-            edge(1, None, 1, true, 2),
-            edge(2, Some('a'), 2, true, 3),
-            edge(3, None, 3, true, 4),
-            edge(4, None, 3, false, 2),
-            edge(2, None, 2, false, 7),
-            // edge(5, None, 2, false, 6),
-            // edge(6, None, 2, false, 7),
-            edge(7, None, 2, false, 7),
-            edge(7, None, 2, false, 10),
-            // edge(8, None, 2, false, 9),
-            // edge(9, None, 2, false, 10),
-            edge(10, None, 2, false, 11),
-            edge(11, None, 3, true, 12),
-            edge(12, None, 3, false, 10),
-            edge(10, None, 1, false, 13),
-        ];
-
-        let mut builder = DefaultBuilder::default();
-        for (source, item, target) in edges {
-            builder.add_edge(source, item, target);
-        }
-        LGraph::new(builder.build(1, [13]))
+        todo!()
     }
 
     fn example_3() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
@@ -1086,6 +1042,10 @@ mod tests {
         LGraph::new(builder.build(1, [3]))
     }
 
+    fn example_9() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
+        todo!()
+    }
+
     fn test_graph(g: LGraph<i32, char, impl Graph<i32, Item<char>>>) -> usize {
         let normal = g.normal_form(&mut DefaultBuilder::default());
         let img = normal.regular_image(&mut DefaultBuilder::default());
@@ -1101,20 +1061,12 @@ mod tests {
         assert_eq!(test_graph(example_1()), 6)
     }
     #[test]
-    fn regularize_2() {
-        assert_eq!(test_graph(example_2()), 7)
-    }
-    #[test]
     fn regularize_3() {
         assert_eq!(test_graph(example_3()), 3)
     }
     #[test]
     fn regularize_4() {
         assert_eq!(test_graph(example_4()), 4)
-    }
-    #[test]
-    fn regularize_5() {
-        assert_eq!(test_graph(example_5()), 5)
     }
     #[test]
     fn regularize_6() {
@@ -1127,6 +1079,19 @@ mod tests {
     #[test]
     fn regularize_8() {
         assert_eq!(test_graph(example_8()), 2)
+    }
+
+    #[test]
+    fn regularize_2() {
+        assert_eq!(test_graph(example_2()), 7)
+    }
+    #[test]
+    fn regularize_5() {
+        assert_eq!(test_graph(example_5()), 5)
+    }
+    #[test]
+    fn regularize_9() {
+        assert_eq!(test_graph(example_9()), 4)
     }
 
     #[test]
