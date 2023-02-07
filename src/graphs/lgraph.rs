@@ -144,28 +144,25 @@ impl<E> Item<E> {
     }
 }
 
-#[derive(Debug)]
-pub struct Memory<'a, N> {
-    node: NodeRef<'a, N>,
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub struct Memory<N> {
+    node: N,
     stack: BracketStack,
 }
 
-impl<'a, N> Hash for Memory<'a, N> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.node.hash(state);
-        self.stack.hash(state);
+impl<'a, N> Memory<&'a N> {
+    pub fn deref(&self) -> Memory<N>
+    where
+        N: Clone,
+    {
+        Memory {
+            node: self.node.clone(),
+            stack: self.stack.clone(),
+        }
     }
 }
 
-impl<'a, N> Eq for Memory<'a, N> {}
-
-impl<'a, N> PartialEq for Memory<'a, N> {
-    fn eq(&self, other: &Self) -> bool {
-        self.node == other.node && self.stack == other.stack
-    }
-}
-
-impl<'a, N> Display for Memory<'a, N>
+impl<N> Display for Memory<N>
 where
     N: Display,
 {
@@ -179,18 +176,9 @@ where
     }
 }
 
-impl<'a, N> Clone for Memory<'a, N> {
-    fn clone(&self) -> Self {
-        Self {
-            node: self.node,
-            stack: self.stack.clone(),
-        }
-    }
-}
-
-impl<'a, N> Memory<'a, N> {
-    pub fn node(&self) -> &'a N {
-        self.node.contents()
+impl<N> Memory<N> {
+    pub fn node(&self) -> &N {
+        &self.node
     }
 
     pub fn stack(&self) -> &BracketStack {
@@ -206,41 +194,11 @@ where
     _p: PhantomData<(N, E)>,
 }
 
-impl<'a, N, E, G> LGraph<Memory<'a, N>, &'a E, G>
-where
-    G: Graph<Memory<'a, N>, Item<&'a E>>,
-{
-    pub fn regular_image<'b, B>(
-        &self,
-        builder: &mut B,
-    ) -> StateMachine<Memory<'a, N>, Option<&'a E>, B::TargetGraph>
-    where
-        B: Builder<Memory<'a, N>, Option<&'a E>>,
-    {
-        builder.clear();
-
-        for edge in self.edges() {
-            builder.add_edge(
-                edge.source().contents().clone(),
-                *edge.contents().item(),
-                edge.target().contents().clone(),
-            );
-        }
-
-        for node in self.nodes() {
-            builder.add_node(node.contents().clone());
-        }
-
-        StateMachine::new(builder.build(
-            self.start_node().contents().clone(),
-            self.end_nodes().map(|n| n.contents()).cloned(),
-        ))
-    }
-}
-
 impl<N, E, G> LGraph<N, E, G>
 where
     G: Graph<N, Item<E>>,
+    N: Eq + Clone,
+    E: Eq + Clone,
 {
     pub fn new(graph: G) -> Self {
         Self {
@@ -252,7 +210,7 @@ where
     fn path_to_memories<'a, 'b>(
         &'a self,
         path: &'b Path<'a, N, Item<E>>,
-    ) -> impl Iterator<Item = Memory<'a, N>> + 'b
+    ) -> impl Iterator<Item = Memory<&'a N>> + 'b
     where
         'a: 'b,
     {
@@ -266,10 +224,16 @@ where
                     })
                 },
             )))
-            .map(|(node, stack)| Memory { node, stack })
+            .map(|(node, stack)| Memory {
+                node: node.contents(),
+                stack,
+            })
     }
 
-    fn is_in_core<'a>(&'a self, path: &Path<'a, N, Item<E>>, w: usize, d: usize) -> bool {
+    fn is_in_core<'a>(&'a self, path: &Path<'a, N, Item<E>>, w: usize, d: usize) -> bool
+    where
+        N: Hash,
+    {
         let mut visited: HashMap<_, usize> = HashMap::new();
 
         for mem in self.path_to_memories(path) {
@@ -289,11 +253,10 @@ where
         true
     }
 
-    pub fn stack_core(
-        &self,
-        w: usize,
-        d: usize,
-    ) -> impl Iterator<Item = Path<'_, N, Item<E>>> + '_ {
+    pub fn stack_core(&self, w: usize, d: usize) -> impl Iterator<Item = Path<'_, N, Item<E>>> + '_
+    where
+        N: Hash,
+    {
         let state_stack = vec![(Path::default(), self.start_node(), BracketStack::default())];
         StackCore {
             graph: self,
@@ -307,9 +270,9 @@ where
         &'a self,
         paths: impl Iterator<Item = Path<'a, N, Item<E>>>,
         builder: &mut B,
-    ) -> LGraph<Memory<'a, N>, &'a E, B::TargetGraph>
+    ) -> LGraph<Memory<N>, E, B::TargetGraph>
     where
-        B: Builder<Memory<'a, N>, Item<&'a E>>,
+        B: Builder<Memory<N>, Item<E>>,
     {
         builder.clear();
         let mut end_nodes = vec![];
@@ -320,75 +283,78 @@ where
             }
 
             for (i, edge) in path.edges().enumerate() {
-                builder.add_edge(mem[i].clone(), edge.contents().as_ref(), mem[i + 1].clone());
+                builder.add_edge(mem[i].deref(), edge.contents().clone(), mem[i + 1].deref());
             }
 
-            end_nodes.push(mem.last().cloned().unwrap());
+            end_nodes.push(mem.last().cloned().unwrap().deref());
         }
 
         LGraph::new(builder.build(
             Memory {
-                node: self.start_node(),
+                node: self.start_node().contents().clone(),
                 stack: BracketStack::default(),
             },
             end_nodes,
         ))
     }
 
-    pub fn stack_core_graph<'a, B>(
-        &'a self,
+    pub fn stack_core_graph<B>(
+        &self,
         w: usize,
         d: usize,
         builder: &mut B,
-    ) -> LGraph<Memory<'a, N>, &'a E, B::TargetGraph>
+    ) -> LGraph<Memory<N>, E, B::TargetGraph>
     where
-        B: Builder<Memory<'a, N>, Item<&'a E>>,
+        B: Builder<Memory<N>, Item<E>>,
+        N: Hash,
     {
         let paths = self.stack_core(w, d);
         self.graph_from_paths(paths, builder)
     }
 
-    pub fn delta_stack_core_graph<'a, B>(
-        &'a self,
+    pub fn delta_stack_core_graph<B>(
+        &self,
         w: usize,
         d: usize,
         builder: &mut B,
-    ) -> LGraph<Memory<'a, N>, &'a E, B::TargetGraph>
+    ) -> LGraph<Memory<N>, E, B::TargetGraph>
     where
-        B: Builder<Memory<'a, N>, Item<&'a E>>,
+        B: Builder<Memory<N>, Item<E>>,
+        N: Hash,
     {
         let prev_paths: HashSet<_> = self.stack_core(w, d - 1).collect();
         let paths = self.stack_core(w, d).filter(|p| !prev_paths.contains(p));
         self.graph_from_paths(paths, builder)
     }
 
-    pub fn normal_form<'a, B>(
-        &'a self,
-        builder: &mut B,
-    ) -> LGraph<Memory<'a, N>, &'a E, B::TargetGraph>
+    pub fn normal_form<B>(&self, builder: &mut B) -> LGraph<Mangled<Memory<N>>, E, B::TargetGraph>
     where
-        B: Builder<Memory<'a, N>, Item<&'a E>>,
-        N: Eq + Debug,
-        E: Eq + Debug,
+        B: Builder<Mangled<Memory<N>>, Item<E>>,
+        N: Hash,
+        E: Debug,
+        N: Debug,
     {
-        let core;
+        let prev_core;
         let dcore: Vec<_>;
+        let core;
 
         let mut d = 1;
         loop {
             let c_paths: HashSet<_> = self.stack_core(1, d).collect();
 
-            let dc = self
+            let dc: Vec<_> = self
                 .stack_core(1, d + 1)
                 .filter(|p| !c_paths.contains(p))
                 .collect();
+
             let c = self.graph_from_paths(c_paths.into_iter(), &mut DefaultBuilder::default());
 
             if self
                 .nodes()
                 .all(|node| c.nodes().any(|n| n.contents().node() == node.contents()))
             {
-                core = c;
+                core = self.stack_core_graph(1, d + 1, &mut DefaultBuilder::default());
+                prev_core = c;
                 dcore = dc;
                 break;
             }
@@ -398,21 +364,23 @@ where
         builder.clear();
         for edge in core.edges() {
             builder.add_edge(
-                edge.source().contents().clone(),
+                Mangled::Node(edge.source().contents().clone()),
                 edge.contents().clone(),
-                edge.target().contents().clone(),
+                Mangled::Node(edge.target().contents().clone()),
             );
         }
 
         for node in core.nodes() {
-            builder.add_node(node.contents().clone());
+            builder.add_node(Mangled::Node(node.contents().clone()));
         }
 
+        let mut mangled_count = 0;
         for path in dcore {
             let mems: Vec<_> = self.path_to_memories(&path).collect();
 
             let has_node = |node: &N, stack: &BracketStack| {
-                core.nodes()
+                prev_core
+                    .nodes()
                     .any(|n| n.contents().node() == node && n.contents().stack() == stack)
             };
 
@@ -456,6 +424,8 @@ where
                 }
             }
 
+            dbg!(&pairs);
+
             for (a, b, s1, s1s2) in pairs {
                 let from = mems
                     .iter()
@@ -470,20 +440,35 @@ where
                     .map(|(i, _)| i)
                     .unwrap();
 
-                for (i, edge) in path.edges().enumerate() {
-                    if i >= from && i + 1 < to {
+                let path: Vec<_> = path.edges().collect();
+
+                if from + 1 == to {
+                    builder.add_edge(
+                        Mangled::Node(mems[to].clone().deref()),
+                        path[from].contents().clone(),
+                        Mangled::Node(mems[to].clone().deref()),
+                    )
+                } else {
+                    builder.add_edge(
+                        Mangled::Node(mems[to].clone().deref()),
+                        path[from].contents().clone(),
+                        Mangled::Mangled(mangled_count),
+                    );
+
+                    for edge in &path[from + 1..to - 1] {
                         builder.add_edge(
-                            mems[i].clone(),
-                            edge.contents().as_ref(),
-                            mems[i + 1].clone(),
+                            Mangled::Mangled(mangled_count),
+                            edge.contents().clone(),
+                            Mangled::Mangled(mangled_count + 1),
                         );
-                    } else if i + 1 == to {
-                        builder.add_edge(
-                            mems[i].clone(),
-                            edge.contents().as_ref(),
-                            mems[from].clone(),
-                        );
+                        mangled_count += 2;
                     }
+
+                    builder.add_edge(
+                        Mangled::Mangled(mangled_count - 1),
+                        path[to - 1].contents().clone(),
+                        Mangled::Node(mems[to].clone().deref()),
+                    );
                 }
 
                 let from = mems
@@ -498,28 +483,88 @@ where
                     .find(|(_, mem)| mem.node() == b && mem.stack() == &s1)
                     .map(|(i, _)| i)
                     .unwrap();
-                for (i, edge) in path.edges().enumerate() {
-                    if i > from && i < to {
+                if from + 1 == to {
+                    builder.add_edge(
+                        Mangled::Node(mems[from].clone().deref()),
+                        path[from].contents().clone(),
+                        Mangled::Node(mems[from].clone().deref()),
+                    )
+                } else {
+                    builder.add_edge(
+                        Mangled::Node(mems[from].clone().deref()),
+                        path[from].contents().clone(),
+                        Mangled::Mangled(mangled_count),
+                    );
+
+                    for edge in &path[from + 1..to - 1] {
                         builder.add_edge(
-                            mems[i].clone(),
-                            edge.contents().as_ref(),
-                            mems[i + 1].clone(),
+                            Mangled::Mangled(mangled_count),
+                            edge.contents().clone(),
+                            Mangled::Mangled(mangled_count + 1),
                         );
-                    } else if i == from {
-                        builder.add_edge(
-                            mems[to].clone(),
-                            edge.contents().as_ref(),
-                            mems[i + 1].clone(),
-                        );
+                        mangled_count += 2;
                     }
+
+                    builder.add_edge(
+                        Mangled::Mangled(mangled_count - 1),
+                        path[to - 1].contents().clone(),
+                        Mangled::Node(mems[from].clone().deref()),
+                    );
                 }
             }
         }
 
-        LGraph::new(builder.build(
-            core.start_node().contents().clone(),
-            core.end_nodes().map(|n| n.contents().clone()),
+        LGraph::new(
+            builder.build(
+                Mangled::Node(prev_core.start_node().contents().clone()),
+                prev_core
+                    .end_nodes()
+                    .map(|n| n.contents().clone())
+                    .map(Mangled::Node),
+            ),
+        )
+    }
+
+    pub fn regular_image<B>(&self, builder: &mut B) -> StateMachine<N, Option<E>, B::TargetGraph>
+    where
+        B: Builder<N, Option<E>>,
+    {
+        builder.clear();
+
+        for edge in self.edges() {
+            builder.add_edge(
+                edge.source().contents().clone(),
+                edge.contents().item().clone(),
+                edge.target().contents().clone(),
+            );
+        }
+
+        for node in self.nodes() {
+            builder.add_node(node.contents().clone());
+        }
+
+        StateMachine::new(builder.build(
+            self.start_node().contents().clone(),
+            self.end_nodes().map(|n| n.contents()).cloned(),
         ))
+    }
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub enum Mangled<N> {
+    Node(N),
+    Mangled(usize),
+}
+
+impl<N> Display for Mangled<N>
+where
+    N: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Mangled::Node(node) => write!(f, "{}", node),
+            Mangled::Mangled(i) => write!(f, "\'{}\'", i),
+        }
     }
 }
 
@@ -536,6 +581,8 @@ where
 impl<'a, N, E, G> Iterator for StackCore<'a, N, E, G>
 where
     G: Graph<N, Item<E>>,
+    N: Eq + Clone + Hash,
+    E: Eq + Clone,
 {
     type Item = Path<'a, N, Item<E>>;
 
@@ -543,7 +590,7 @@ where
         while let Some((path, node, brackets)) = self.state.pop() {
             let mut res = None;
 
-            if self.graph.is_end_node(node) && brackets.is_empty() {
+            if self.graph.is_end_node(node) && brackets.is_empty() && !path.is_empty() {
                 res = Some(path.clone());
             }
 
@@ -593,7 +640,6 @@ mod tests {
         default::{DefaultBuilder, DefaultGraph},
         graph_trait::{Builder, Graph},
         refs::Path,
-        state_machine::StateMachine,
     };
 
     use super::{Bracket, BracketType, Item, LGraph};
@@ -623,6 +669,8 @@ mod tests {
     }
 
     fn example_1() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
+        todo!("Seems fine, but converting to DFA takes too long for some reason");
+
         let edges = [
             edge(1, None, 1, true, 2),
             edge(2, Some('a'), 2, true, 2),
@@ -645,6 +693,8 @@ mod tests {
     }
 
     fn example_2() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
+        todo!("Too complicated to analyze...");
+
         let edges = [
             edge(1, None, 1, true, 2),
             edge(2, Some('a'), 2, true, 3),
@@ -705,6 +755,8 @@ mod tests {
     }
 
     fn example_5() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
+        todo!("dcore is empty, because new information is uncovered every 2nd d value");
+
         let edges = [
             edge(1, None, 1, true, 2),
             edge(2, Some('a'), 2, true, 3),
@@ -741,6 +793,8 @@ mod tests {
     }
 
     fn example_7() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
+        todo!("has an edge with b coming off from node 6 for some reason?? Also an unfinished mangled loop");
+
         let edges = [
             edge(1, None, 1, true, 2),
             edge(2, Some('a'), 2, true, 2),
@@ -761,6 +815,7 @@ mod tests {
     }
 
     fn example_8() -> LGraph<i32, char, impl Graph<i32, Item<char>>> {
+        todo!("Correct but has an unfinished mangled loop");
         let edges = [
             edge(1, Some('a'), 1, true, 1),
             edge(1, Some('b'), 2, true, 2),
