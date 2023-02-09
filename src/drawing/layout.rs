@@ -18,6 +18,39 @@ pub trait Layout<'a, N, E, G> {
     fn end(&self) -> Vec2;
 }
 
+impl<'a, L, N, E, G> Layout<'a, N, E, G> for Box<L>
+where
+    L: Layout<'a, N, E, G> + ?Sized,
+{
+    fn node(&self, node: NodeRef<'a, N>) -> Option<Circle> {
+        self.as_ref().node(node)
+    }
+
+    fn graph(&self) -> &'a G {
+        self.as_ref().graph()
+    }
+
+    fn width(&self) -> f32 {
+        self.as_ref().width()
+    }
+
+    fn height(&self) -> f32 {
+        self.as_ref().height()
+    }
+
+    fn spacing(&self) -> f32 {
+        self.as_ref().spacing()
+    }
+
+    fn start(&self) -> Vec2 {
+        self.as_ref().start()
+    }
+
+    fn end(&self) -> Vec2 {
+        self.as_ref().end()
+    }
+}
+
 #[derive(Debug)]
 pub struct ManualGridLayout<'a, N, E, G>
 where
@@ -78,8 +111,24 @@ where
         node_radius: f32,
         spacing: f32,
         graph: &'a G,
-        locations: HashMap<NodeRef<'a, N>, (usize, usize)>,
+        mut locations: HashMap<NodeRef<'a, N>, (usize, usize)>,
     ) -> Self {
+        let min_x = locations
+            .iter()
+            .map(|(_, (x, _))| *x)
+            .min()
+            .unwrap_or_default();
+        let min_y = locations
+            .iter()
+            .map(|(_, (_, y))| *y)
+            .min()
+            .unwrap_or_default();
+
+        locations.values_mut().for_each(|(x, y)| {
+            *x -= min_x;
+            *y -= min_y;
+        });
+
         let horizontal_count = locations
             .values()
             .map(|(x, _)| x + 1)

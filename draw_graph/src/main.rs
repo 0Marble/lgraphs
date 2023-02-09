@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display, fs::File, io::Read};
 
 use imageproc::{
     drawing::{
@@ -6,49 +6,31 @@ use imageproc::{
     },
     rect::Rect,
 };
+use json::JsonValue;
 use lgraphs::{
     drawing::{
-        drawer::{draw_graph, DrawCommand},
-        layout::{Layout, MinGridLayout},
+        drawer::{draw_graph, DrawCommand, LabelDrawer},
+        layout::{Layout, ManualGridLayout, MinGridLayout},
     },
     graphs::{
         default::DefaultBuilder,
         graph_trait::{Builder, Graph},
-        lgraph::{Bracket, BracketType, Item, LGraph},
+        lgraph::{Bracket, Item, LGraph},
     },
 };
 
 use image::{Rgb, RgbImage};
 use rusttype::{Font, Scale};
 
-fn edge(
-    from: i32,
-    item: Option<char>,
-    index: usize,
-    open: bool,
-    to: i32,
-) -> (i32, Item<char>, i32) {
-    (
-        from,
-        Item::new(
-            item,
-            Bracket::new(
-                index,
-                if open {
-                    BracketType::Open
-                } else {
-                    BracketType::Close
-                },
-            ),
-        ),
-        to,
-    )
-}
-
-fn render_graph<'a, N, E, G, L>(layout: &L, file_name: &str) -> Result<(), impl std::error::Error>
+fn render_graph<'a, N, E, G, L>(
+    layout: &L,
+    file_name: &str,
+    node_drawer: &impl LabelDrawer<N>,
+    edge_drawer: &impl LabelDrawer<E>,
+) -> Result<(), impl std::error::Error>
 where
-    N: Display + 'a,
-    E: Display + 'a,
+    N: 'a,
+    E: 'a,
     G: Graph<N, E> + 'a,
     L: Layout<'a, N, E, G>,
 {
@@ -61,7 +43,7 @@ where
     let text_scale = 15.0;
     let font = Vec::from(include_bytes!("../../fonts/gnu-free/FreeMonoBoldOblique.otf") as &[u8]);
     let font = Font::try_from_vec(font).unwrap();
-    let commands = draw_graph(layout, text_scale, 3, 10);
+    let commands = draw_graph(layout, text_scale, 3, 10, node_drawer, edge_drawer);
 
     for command in commands {
         match command {
@@ -110,84 +92,341 @@ where
     image.save(file_name)
 }
 
-fn get_graph() -> LGraph<i32, char, impl Graph<i32, Item<char>>> {
-    let edges = [
-        edge(1, None, 1, true, 2),
-        edge(2, Some('a'), 2, true, 2),
-        edge(2, Some('b'), 3, true, 3),
-        edge(3, None, 3, false, 4),
-        edge(4, None, 2, false, 4),
-        edge(4, None, 1, false, 5),
-        edge(2, Some('c'), 3, true, 6),
-        edge(6, None, 3, false, 7),
-        edge(7, None, 2, false, 8),
-        edge(8, None, 2, false, 9),
-        edge(9, None, 2, false, 10),
-        edge(10, None, 1, false, 5),
-    ];
-    let mut builder = DefaultBuilder::default();
-    for (source, item, target) in edges {
-        builder.add_edge(source, item, target);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Label {
+    Int(i32),
+    Char(char),
+}
+
+impl Display for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Label::Int(i) => write!(f, "{}", i),
+            Label::Char(c) => write!(f, "{}", c),
+        }
     }
-    LGraph::new(builder.build(1, [5]))
+}
+
+#[derive(Debug, Clone)]
+enum ParseError {
+    ExpectedLabel(String),
+    ExpectedArrayOfLabels(String),
+    ExpectedArrayOfEdges(String),
+    ExpectedBracket(String),
+    ExpectedBool(String),
+    ExpectedNumber(String),
+    ExpectedArrayOfLocations,
+    ExpectedLocation(usize),
+    NoSuchNode(String),
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for ParseError {}
+
+fn read_label(val: &JsonValue, field_name: &str) -> Result<Label, Box<dyn std::error::Error>> {
+    let label = val
+        .as_i32()
+        .map(Label::Int)
+        .or_else(|| val.as_str().and_then(|s| s.chars().next()).map(Label::Char))
+        .ok_or_else(|| ParseError::ExpectedLabel(field_name.to_string()))?;
+
+    Ok(label)
+}
+
+fn read_edge(
+    val: &JsonValue,
+    field_name: &str,
+) -> Result<(Label, Option<Label>, Label), Box<dyn std::error::Error>> {
+    let source = read_label(&val["source"], &format!("{}[source]", field_name))?;
+    let target = read_label(&val["target"], &format!("{}[target]", field_name))?;
+    let item = read_label(&val["item"], &format!("{}[item]", field_name)).ok();
+
+    Ok((source, item, target))
+}
+
+fn read_graph<B>(src: &str, builder: &mut B) -> Result<B::TargetGraph, Box<dyn std::error::Error>>
+where
+    B: Builder<Label, Option<Label>>,
+{
+    let json = json::parse(src)?;
+    let start_node = read_label(&json["start_node"], "start_node")?;
+    let end_nodes = match &json["end_nodes"] {
+        JsonValue::Array(a) => a
+            .iter()
+            .enumerate()
+            .map(|(i, v)| read_label(v, &format!("end_nodes[{}]", i)))
+            .collect::<Result<Vec<_>, _>>()?,
+        _ => Err(ParseError::ExpectedArrayOfLabels("end_nodes".to_string()))?,
+    };
+    let edges = match &json["edges"] {
+        JsonValue::Array(a) => a
+            .iter()
+            .enumerate()
+            .map(|(i, v)| read_edge(v, &format!("edges[{}]", i)))
+            .collect::<Result<Vec<_>, _>>()?,
+        _ => Err(ParseError::ExpectedArrayOfEdges("edges".to_string()))?,
+    };
+
+    builder.clear();
+    for (source, edge, target) in edges {
+        builder.add_edge(source, edge, target);
+    }
+
+    Ok(builder.build(start_node, end_nodes))
+}
+
+fn read_lgraph_edge(
+    val: &JsonValue,
+    field_name: &str,
+) -> Result<(Label, Item<Label>, Label), Box<dyn std::error::Error>> {
+    let source = read_label(&val["source"], &format!("{}[source]", field_name))?;
+    let target = read_label(&val["target"], &format!("{}[target]", field_name))?;
+    let item = read_label(&val["item"], &format!("{}[item]", field_name)).ok();
+    let bracket = match &val["bracket"] {
+        JsonValue::Object(obj) => Bracket::new(
+            obj["index"].as_usize().ok_or_else(|| {
+                ParseError::ExpectedNumber(format!("{}[bracket][index]", field_name))
+            })?,
+            match obj["is_open"].as_bool() {
+                Some(true) => lgraphs::graphs::lgraph::BracketType::Open,
+                Some(false) => lgraphs::graphs::lgraph::BracketType::Close,
+                _ => Err(ParseError::ExpectedBool(format!(
+                    "{}[bracket][is_open]",
+                    field_name
+                )))?,
+            },
+        ),
+        _ => Err(ParseError::ExpectedBracket(format!(
+            "{}[bracket]",
+            field_name
+        )))?,
+    };
+
+    Ok((source, Item::new(item, bracket), target))
+}
+
+fn read_lgraph<B>(
+    src: &str,
+    builder: &mut B,
+) -> Result<LGraph<Label, Label, B::TargetGraph>, Box<dyn std::error::Error>>
+where
+    B: Builder<Label, Item<Label>>,
+    B::TargetGraph: Graph<Label, Item<Label>>,
+{
+    let json = json::parse(src)?;
+    let start_node = read_label(&json["start_node"], "start_node")?;
+    let end_nodes = match &json["end_nodes"] {
+        JsonValue::Array(a) => a
+            .iter()
+            .enumerate()
+            .map(|(i, v)| read_label(v, &format!("end_nodes[{}]", i)))
+            .collect::<Result<Vec<_>, _>>()?,
+        _ => Err(ParseError::ExpectedArrayOfLabels("end_nodes".to_string()))?,
+    };
+    let edges = match &json["edges"] {
+        JsonValue::Array(a) => a
+            .iter()
+            .enumerate()
+            .map(|(i, v)| read_lgraph_edge(v, &format!("edges[{}]", i)))
+            .collect::<Result<Vec<_>, _>>()?,
+        _ => Err(ParseError::ExpectedArrayOfEdges("edges".to_string()))?,
+    };
+
+    builder.clear();
+    for (source, edge, target) in edges {
+        builder.add_edge(source, edge, target);
+    }
+
+    Ok(LGraph::new(builder.build(start_node, end_nodes)))
+}
+
+struct Drawer;
+impl LabelDrawer<Label> for Drawer {
+    fn draw(&self, label: &Label) -> String {
+        match label {
+            Label::Int(i) => i.to_string(),
+            Label::Char(c) => c.to_string(),
+        }
+    }
+}
+impl LabelDrawer<Option<Label>> for Drawer {
+    fn draw(&self, label: &Option<Label>) -> String {
+        match label {
+            Some(l) => self.draw(l),
+            None => "_".to_string(),
+        }
+    }
+}
+impl LabelDrawer<Item<Label>> for Drawer {
+    fn draw(&self, label: &Item<Label>) -> String {
+        label.to_string()
+    }
+}
+
+fn read_location(
+    val: &JsonValue,
+    index: usize,
+) -> Result<(Label, usize, usize), Box<dyn std::error::Error>> {
+    let loc = match val {
+        JsonValue::Array(a) => (
+            a.get(0)
+                .map(|l| read_label(l, val.to_string().as_str()))
+                .ok_or_else(|| {
+                    ParseError::ExpectedLabel(format!("location {}, index 0", index))
+                })??,
+            a.get(1).and_then(|v| v.as_usize()).ok_or_else(|| {
+                ParseError::ExpectedNumber(format!("location {}, index 1", index))
+            })?,
+            a.get(2).and_then(|v| v.as_usize()).ok_or_else(|| {
+                ParseError::ExpectedNumber(format!("location {}, index 2", index))
+            })?,
+        ),
+        _ => Err(ParseError::ExpectedLocation(index))?,
+    };
+
+    Ok(loc)
+}
+
+fn manual_layout<'a, E, G>(
+    src: &str,
+    graph: &'a G,
+) -> Result<ManualGridLayout<'a, Label, E, G>, Box<dyn std::error::Error>>
+where
+    G: Graph<Label, E>,
+{
+    let json = json::parse(src)?;
+    let locations = match &json {
+        JsonValue::Array(a) => a
+            .iter()
+            .enumerate()
+            .map(|(i, val)| read_location(val, i))
+            .collect::<Result<Vec<_>, _>>()?,
+        _ => Err(ParseError::ExpectedArrayOfLocations)?,
+    };
+
+    let mut node_locations = HashMap::new();
+    for (node, x, y) in locations {
+        let node = graph
+            .node_with_contents(&node)
+            .ok_or_else(|| ParseError::NoSuchNode(node.to_string()))?;
+        node_locations.insert(node, (x, y));
+    }
+
+    Ok(ManualGridLayout::new(50.0, 60.0, graph, node_locations))
 }
 
 fn main() {
-    let node_radius = 50.0;
-    let spacing = 60.0;
+    let args = std::env::args().collect::<Vec<_>>();
+    let input = args
+        .iter()
+        .find_map(|arg| arg.strip_prefix("input="))
+        .expect("Please specify an input file with input=file");
+    let output = args
+        .iter()
+        .find_map(|arg| arg.strip_prefix("output="))
+        .expect("Please specify an output file with output=file");
+    let layout = args
+        .iter()
+        .find_map(|arg| arg.strip_prefix("layout="))
+        .unwrap_or("auto");
+    let is_lgraph = args.iter().any(|arg| arg.as_str().eq("--lgraph"));
+    let manual_locations_file = args
+        .iter()
+        .find_map(|arg| arg.strip_prefix("locations="))
+        .unwrap_or("-");
 
-    let g = get_graph();
-    {
-        let layout = MinGridLayout::new(node_radius, spacing, &g);
-        render_graph(&layout, "images/graph5.png").expect("Could not render")
+    let mut src = String::new();
+
+    if input == "-" {
+        println!("Reading graph from stdin, press Control+D to finish input");
+        std::io::stdin()
+            .read_to_string(&mut src)
+            .expect("Could not read source");
+        println!("Graph successfully read");
+    } else {
+        File::open(input)
+            .unwrap_or_else(|e| panic!("Could not open file {}: {}", input, e))
+            .read_to_string(&mut src)
+            .unwrap_or_else(|e| panic!("Could not read from file {}: {}", input, e));
     }
 
-    for d in 1..5 {
-        let c = g.stack_core_graph(1, d, &mut DefaultBuilder::default());
-        let layout = MinGridLayout::new(node_radius, spacing, &c);
-        render_graph(&layout, format!("images/c1{d}-5.png").as_str()).expect("Could not render");
+    if is_lgraph {
+        let g = read_lgraph(&src, &mut DefaultBuilder::default())
+            .unwrap_or_else(|e| panic!("Could not parse lgraph: {}", e));
+        let layout: Box<dyn Layout<_, _, _>> = match layout {
+            "auto" => Box::new(MinGridLayout::new(50.0, 60.0, &g)),
+            "manual" => {
+                let mut locations = String::new();
+                if manual_locations_file == "-" {
+                    println!("Reading node locations from stdin, press Control+D to finish input");
+                    std::io::stdin()
+                        .read_to_string(&mut locations)
+                        .expect("Could not read source");
+                    println!("Locations successfully read");
+                } else {
+                    File::open(manual_locations_file)
+                        .unwrap_or_else(|e| {
+                            panic!("Could not open file {}: {}", manual_locations_file, e)
+                        })
+                        .read_to_string(&mut locations)
+                        .unwrap_or_else(|e| {
+                            panic!("Could not read from file {}: {}", manual_locations_file, e)
+                        });
+                }
+                Box::new(
+                    manual_layout(locations.as_str(), &g)
+                        .unwrap_or_else(|e| panic!("Could not parse node locations: {}", e)),
+                )
+            }
+            other => panic!("Unknown layout {}", other),
+        };
 
-        // if g.nodes()
-        //     .all(|node| c.nodes().any(|n| n.contents().node() == node.contents()))
-        // {
-        //     let c = g.stack_core_graph(1, d + 1, &mut DefaultBuilder::default());
-        //     let layout = MinGridLayout::new(node_radius, spacing, &c);
-        //     render_graph(&layout, format!("images/c1{}.png", d + 1).as_str())
-        //         .expect("Could not render");
-
-        let dc = g.delta_stack_core_graph(1, d + 1, &mut DefaultBuilder::default());
-        let layout = MinGridLayout::new(node_radius, spacing, &dc);
-        render_graph(&layout, format!("images/dc1{}-5.png", d + 1).as_str())
-            .expect("Could not render");
-
-        //     break;
-        // }
+        render_graph(&layout, output, &Drawer, &Drawer)
+            .unwrap_or_else(|e| panic!("Could not render a graph to {}: {}", output, e));
+    } else {
+        let g = read_graph(&src, &mut DefaultBuilder::default())
+            .unwrap_or_else(|e| panic!("Could not parse graph: {}", e));
+        let layout: Box<dyn Layout<_, _, _>> = match layout {
+            "auto" => Box::new(MinGridLayout::new(50.0, 60.0, &g)),
+            "manual" => {
+                let mut locations = String::new();
+                if manual_locations_file == "-" {
+                    println!("Reading node locations from stdin, press Control+D to finish input");
+                    std::io::stdin()
+                        .read_to_string(&mut locations)
+                        .expect("Could not read source");
+                    println!("Locations successfully read");
+                } else {
+                    File::open(manual_locations_file)
+                        .unwrap_or_else(|e| {
+                            panic!("Could not open file {}: {}", manual_locations_file, e)
+                        })
+                        .read_to_string(&mut locations)
+                        .unwrap_or_else(|e| {
+                            panic!("Could not read from file {}: {}", manual_locations_file, e)
+                        });
+                }
+                Box::new(
+                    manual_layout(locations.as_str(), &g)
+                        .unwrap_or_else(|e| panic!("Could not parse node locations: {}", e)),
+                )
+            }
+            other => panic!("Unknown layout {}", other),
+        };
+        render_graph(&layout, output, &Drawer, &Drawer)
+            .unwrap_or_else(|e| panic!("Could not render a graph to {}: {}", output, e));
     }
 
-    let normal = g.normal_form(&mut DefaultBuilder::default());
-    println!("Normal form generated");
-    {
-        let layout = MinGridLayout::new(node_radius, spacing, &normal);
-        render_graph(&layout, "images/normal5.png").expect("Could not render")
-    }
-    println!("Normal form drawn");
-
-    let img = normal.regular_image(&mut DefaultBuilder::default());
-    let no_nones = img.remove_nones(&mut DefaultBuilder::default());
-    {
-        let layout = MinGridLayout::new(node_radius, spacing, &no_nones);
-        render_graph(&layout, "images/img5.png").expect("Could not render")
-    }
-
-    let determined = no_nones.determine(&mut DefaultBuilder::default());
-    {
-        let layout = MinGridLayout::new(node_radius, spacing, &determined);
-        render_graph(&layout, "images/determined.png").expect("Could not render")
-    }
-
-    let minimized = determined.minimize(&mut DefaultBuilder::default());
-    {
-        let layout = MinGridLayout::new(node_radius, spacing, &minimized);
-        render_graph(&layout, "images/minimized.png").expect("Could not render")
-    }
+    println!(
+        "Successfully drawn to {}/{}",
+        std::env::current_dir()
+            .expect("Could not determine cwd")
+            .display(),
+        output,
+    );
 }

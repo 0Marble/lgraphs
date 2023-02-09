@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use crate::graphs::{
     graph_trait::Graph,
     refs::{EdgeRef, NodeRef},
@@ -18,16 +16,20 @@ pub enum DrawCommand {
     Text { bounds: Rect, text: String },
 }
 
+pub trait LabelDrawer<T> {
+    fn draw(&self, label: &T) -> String;
+}
+
 pub fn draw_graph<'a, N, E, G, L>(
     layout: &L,
     text_size: f32,
     min_char_count: usize,
     max_char_count: usize,
+    node_drawer: &impl LabelDrawer<N>,
+    edge_drawer: &impl LabelDrawer<E>,
 ) -> Vec<DrawCommand>
 where
     G: Graph<N, E>,
-    N: Display,
-    E: Display,
     L: Layout<'a, N, E, G>,
     N: 'a,
     E: 'a,
@@ -42,6 +44,8 @@ where
             text_size,
             min_char_count,
             max_char_count,
+            node_drawer,
+            edge_drawer,
         );
     }
     for edge in layout.graph().edges() {
@@ -52,6 +56,8 @@ where
             text_size,
             min_char_count,
             max_char_count,
+            node_drawer,
+            edge_drawer,
         );
     }
     for end_node in layout.graph().end_nodes() {
@@ -72,6 +78,8 @@ where
             line.t(0.25),
             line.t(0.75),
             layout,
+            node_drawer,
+            edge_drawer,
         );
     }
 
@@ -85,14 +93,14 @@ fn draw_node<'a, N, E, G, L>(
     text_size: f32,
     min_char_count: usize,
     max_char_count: usize,
+    node_drawer: &impl LabelDrawer<N>,
+    _edge_drawer: &impl LabelDrawer<E>,
 ) where
     G: Graph<N, E>,
-    N: Display,
-    E: Display,
     L: Layout<'a, N, E, G>,
 {
     let Some(pos) = layout.node(node) else {return};
-    let full_text = node.contents().to_string();
+    let full_text = node_drawer.draw(node.contents());
     let allowed_char_count = full_text.len().clamp(min_char_count, max_char_count);
     let cropped_text: String = full_text.chars().take(allowed_char_count).collect();
     let bounds = pos.rect_at((cropped_text.len() as f32) * text_size, text_size, 0.0, 0.0);
@@ -110,10 +118,10 @@ fn draw_edge<'a, N, E, G, L>(
     text_size: f32,
     min_char_count: usize,
     max_char_count: usize,
+    node_drawer: &impl LabelDrawer<N>,
+    edge_drawer: &impl LabelDrawer<E>,
 ) where
     G: Graph<N, E>,
-    N: Display,
-    E: Display,
     L: Layout<'a, N, E, G>,
 {
     let line = if edge.source() == edge.target() {
@@ -139,13 +147,21 @@ fn draw_edge<'a, N, E, G, L>(
         from.line_between(to, droopiness)
     };
 
-    draw_arrow(commands, line.p1, line.p4, line.p2, line.p3, layout);
+    draw_arrow(
+        commands,
+        line.p1,
+        line.p4,
+        line.p2,
+        line.p3,
+        layout,
+        node_drawer,
+        edge_drawer,
+    );
     let bounds = line.bounds();
     let allowed_char_count =
         ((bounds.width() / text_size) as usize).clamp(min_char_count, max_char_count);
-    let text: String = edge
-        .contents()
-        .to_string()
+    let text: String = edge_drawer
+        .draw(edge.contents())
         .chars()
         .take(allowed_char_count)
         .collect();
@@ -160,10 +176,10 @@ fn draw_arrow<'a, N, E, G, L>(
     control1: Vec2,
     control2: Vec2,
     layout: &L,
+    _node_drawer: &impl LabelDrawer<N>,
+    _edge_drawer: &impl LabelDrawer<E>,
 ) where
     G: Graph<N, E>,
-    N: Display,
-    E: Display,
     L: Layout<'a, N, E, G>,
 {
     let p1 = from;
