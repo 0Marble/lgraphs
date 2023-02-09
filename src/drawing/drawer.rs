@@ -56,15 +56,11 @@ where
     }
     for end_node in layout.graph().end_nodes() {
         let Some(pos) = layout.node(end_node) else {continue;};
-        let line = pos.to_point(layout.end());
-        draw_arrow(
-            &mut commands,
-            line.start(),
-            line.end(),
-            line.t(0.25),
-            line.t(0.75),
-            layout,
-        );
+        commands.push(DrawCommand::Circle(Circle {
+            x: pos.x,
+            y: pos.y,
+            r: pos.r * 0.8,
+        }))
     }
 
     if let Some(pos) = layout.node(layout.graph().start_node()) {

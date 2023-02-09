@@ -1,4 +1,9 @@
-use std::{hash::Hash, iter::once, ops::Index};
+use std::{
+    fmt::{Debug, Display},
+    hash::Hash,
+    iter::once,
+    ops::{Index, Range},
+};
 
 #[derive(Debug)]
 pub struct NodeRef<'a, N> {
@@ -165,6 +170,39 @@ impl<'a, N, E> Clone for EdgeRef<'a, N, E> {
 #[derive(Debug)]
 pub struct Path<'a, N, E> {
     edges: Vec<EdgeRef<'a, N, E>>,
+}
+
+impl<'a, N, E> Display for Path<'a, N, E>
+where
+    N: Display,
+    E: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.edges.is_empty() {
+            return Ok(());
+        }
+
+        write!(
+            f,
+            "{} - {}",
+            self.edges[0].source().contents(),
+            self.edges[0].contents()
+        )?;
+
+        for edge in self.edges().skip(1) {
+            write!(f, " -> {} - {}", edge.source().contents(), edge.contents())?;
+        }
+
+        write!(f, "-> {}", self.edges.last().unwrap().target().contents())
+    }
+}
+
+impl<'a, N, E> Index<Range<usize>> for Path<'a, N, E> {
+    type Output = [EdgeRef<'a, N, E>];
+
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        &self.edges[index]
+    }
 }
 
 impl<'a, N, E> Index<usize> for Path<'a, N, E> {

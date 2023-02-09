@@ -79,7 +79,15 @@ where
             ),
             DrawCommand::Text { bounds, text } => draw_text_mut(
                 &mut image,
-                Rgb([0, 0, 0]),
+                if text.starts_with('a') {
+                    Rgb([255, 0, 0])
+                } else if text.starts_with('b') {
+                    Rgb([0, 255, 0])
+                } else if text.starts_with('c') {
+                    Rgb([0, 0, 255])
+                } else {
+                    Rgb([0, 0, 0])
+                },
                 bounds.x1 as i32,
                 bounds.y1 as i32,
                 Scale::uniform(text_scale),
@@ -105,23 +113,23 @@ where
 fn get_graph() -> LGraph<i32, char, impl Graph<i32, Item<char>>> {
     let edges = [
         edge(1, None, 1, true, 2),
-        edge(2, Some('a'), 2, true, 3),
-        edge(3, Some('b'), 3, true, 4),
-        edge(4, None, 3, false, 3),
-        edge(3, Some('c'), 4, true, 5),
-        edge(5, None, 3, true, 6),
-        edge(6, None, 3, false, 2),
-        edge(2, Some('d'), 3, true, 7),
-        edge(7, None, 3, false, 8),
-        edge(8, None, 2, false, 8),
-        edge(8, None, 4, false, 8),
-        edge(8, None, 1, false, 9),
+        edge(2, Some('a'), 2, true, 2),
+        edge(2, Some('b'), 3, true, 3),
+        edge(3, None, 3, false, 4),
+        edge(4, None, 2, false, 4),
+        edge(4, None, 1, false, 5),
+        edge(2, Some('c'), 3, true, 6),
+        edge(6, None, 3, false, 7),
+        edge(7, None, 2, false, 8),
+        edge(8, None, 2, false, 9),
+        edge(9, None, 2, false, 10),
+        edge(10, None, 1, false, 5),
     ];
     let mut builder = DefaultBuilder::default();
     for (source, item, target) in edges {
         builder.add_edge(source, item, target);
     }
-    LGraph::new(builder.build(1, [9]))
+    LGraph::new(builder.build(1, [5]))
 }
 
 fn main() {
@@ -134,7 +142,7 @@ fn main() {
         render_graph(&layout, "images/graph5.png").expect("Could not render")
     }
 
-    for d in 1..10 {
+    for d in 1..5 {
         let c = g.stack_core_graph(1, d, &mut DefaultBuilder::default());
         let layout = MinGridLayout::new(node_radius, spacing, &c);
         render_graph(&layout, format!("images/c1{d}-5.png").as_str()).expect("Could not render");
@@ -157,10 +165,12 @@ fn main() {
     }
 
     let normal = g.normal_form(&mut DefaultBuilder::default());
+    println!("Normal form generated");
     {
         let layout = MinGridLayout::new(node_radius, spacing, &normal);
         render_graph(&layout, "images/normal5.png").expect("Could not render")
     }
+    println!("Normal form drawn");
 
     let img = normal.regular_image(&mut DefaultBuilder::default());
     let no_nones = img.remove_nones(&mut DefaultBuilder::default());
@@ -169,15 +179,15 @@ fn main() {
         render_graph(&layout, "images/img5.png").expect("Could not render")
     }
 
-    // let determined = no_nones.determine(&mut DefaultBuilder::default());
-    // {
-    //     let layout = MinGridLayout::new(node_radius, spacing, &determined);
-    //     render_graph(&layout, "images/determined.png").expect("Could not render")
-    // }
+    let determined = no_nones.determine(&mut DefaultBuilder::default());
+    {
+        let layout = MinGridLayout::new(node_radius, spacing, &determined);
+        render_graph(&layout, "images/determined.png").expect("Could not render")
+    }
 
-    // let minimized = determined.minimize(&mut DefaultBuilder::default());
-    // {
-    //     let layout = MinGridLayout::new(node_radius, spacing, &minimized);
-    //     render_graph(&layout, "images/minimized.png").expect("Could not render")
-    // }
+    let minimized = determined.minimize(&mut DefaultBuilder::default());
+    {
+        let layout = MinGridLayout::new(node_radius, spacing, &minimized);
+        render_graph(&layout, "images/minimized.png").expect("Could not render")
+    }
 }
