@@ -40,13 +40,14 @@ Node names and edge items can be single characters or numbers. If an `item` fiel
 
     [
         ["a", 1, 1],
-        [2,   1, 2],
+        [ 2 , 1, 2],
         ["c", 2, 2]
     ]
 
 First element in the array is a node name, than x coordinate, than y. 
 
-```cargo run --package draw_graph -- --lgraph input=graph.json output=graph.png layout=manual locations=locations.json```
+    cargo run --package draw_graph -- --lgraph input=graph.json output=graph.png layout=manual locations=locations.json
+
 
 Result:
 
