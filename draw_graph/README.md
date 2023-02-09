@@ -4,7 +4,7 @@ To draw the graph, do ```cargo run --package draw_graph -- [OPTIONS]```.
 
 Options:
     
-- `input=[FILE | -]` **(required)** - input file from the graph. If set to `-`, the graph is read from stdin.
+- `input=[FILE | -]` **(required)** - input file for the graph. If set to `-`, the graph is read from stdin.
 - `output=[FILE]` **(required)** - output file for the resulting image.
 - `--lgraph` *(optional)* - if set, read the file as an lgraph.
 - `layout=[LAYOUT]` *(optional)* - determines the node layout. If not specified, `auto` is used by default. Available layouts:
@@ -40,13 +40,13 @@ Node names and edge items can be single characters or numbers. If an `item` fiel
 
     [
         ["a", 1, 1],
-        [2, 1, 2],
+        [2,   1, 2],
         ["c", 2, 2]
     ]
 
 First element in the array is a node name, than x coordinate, than y. 
 
-```cargo run --package draw_graph -- --lgraph  input=graph.json output=graph.png layout=manual locations=locations.json```
+```cargo run --package draw_graph -- --lgraph input=graph.json output=graph.png layout=manual locations=locations.json```
 
 Result:
 
