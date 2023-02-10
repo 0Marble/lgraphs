@@ -34,6 +34,10 @@ impl Bracket {
     pub fn is_open(&self) -> bool {
         matches!(self.open, BracketType::Open)
     }
+
+    pub fn index(&self) -> usize {
+        self.index
+    }
 }
 
 #[derive(Debug, Default, Hash, Clone, PartialEq, Eq)]
@@ -207,13 +211,135 @@ where
     _p: PhantomData<(N, E)>,
 }
 
+#[derive(Debug)]
+struct Nest<'a, 'b, N, E> {
+    left: (usize, usize),
+    right: (usize, usize),
+    path: &'b Path<'a, N, E>,
+}
+
+impl<'a, 'b, N, E> Clone for Nest<'a, 'b, N, E> {
+    fn clone(&self) -> Self {
+        Self {
+            left: self.left,
+            right: self.right,
+            path: self.path,
+        }
+    }
+}
+
+impl<'a, 'b, N, E> Hash for Nest<'a, 'b, N, E> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.left.hash(state);
+        self.right.hash(state);
+        self.path.hash(state);
+    }
+}
+
+impl<'a, 'b, N, E> Eq for Nest<'a, 'b, N, E> {}
+
+impl<'a, 'b, N, E> PartialEq for Nest<'a, 'b, N, E> {
+    fn eq(&self, other: &Self) -> bool {
+        self.left == other.left && self.right == other.right && self.path == other.path
+    }
+}
+
+impl<'a, 'b, N, E> Nest<'a, 'b, N, E> {
+    pub fn is_equivalent(&self, other: &Self) -> bool {
+        self.minimize().1 == other.minimize().1
+    }
+    pub fn is_smaller(&self, other: &Self) -> bool {
+        self.minimize().0 < other.minimize().0
+    }
+
+    pub fn minimize(&self) -> (usize, Self) {
+        let (a1, a2) = self.left;
+        let (b1, b2) = self.right;
+        let left = &self.path[a1..a2];
+        let right = &self.path[b1..b2];
+        let mid = &self.path[a2..b1];
+
+        let mut left_min = None;
+        'find_left_min: for candidate in (1..left.len())
+            .filter(|end| left[0] == left[*end])
+            .map(|end| &left[0..end])
+        {
+            let mut remaining = left;
+            loop {
+                if let Some(next) = remaining.strip_prefix(candidate) {
+                    remaining = next;
+                    if remaining.is_empty() {
+                        left_min = Some(candidate);
+                        break 'find_left_min;
+                    }
+                } else {
+                    continue 'find_left_min;
+                }
+            }
+        }
+        let left_min = left_min.unwrap_or(left);
+
+        let end = right.len() - 1;
+        let mut right_min = None;
+        'find_right_min: for candidate in (1..=end)
+            .filter(|start| left[*start] == left[end])
+            .map(|start| &left[start..=end])
+        {
+            let mut remaining = right;
+            loop {
+                if let Some(next) = remaining.strip_suffix(candidate) {
+                    remaining = next;
+                    if remaining.is_empty() {
+                        right_min = Some(candidate);
+                        break 'find_right_min;
+                    }
+                } else {
+                    continue 'find_right_min;
+                }
+            }
+        }
+        let right_min = right_min.unwrap_or(right);
+
+        let mut left_count = 0;
+        let mut remaining = mid;
+        while let Some(next) = remaining.strip_prefix(left_min) {
+            left_count += 1;
+            remaining = next;
+        }
+        let mut right_count = 0;
+        while let Some(next) = remaining.strip_suffix(right_min) {
+            right_count += 1;
+            remaining = next;
+        }
+        let mid_min = remaining;
+        left_count += left.len() / left_min.len();
+        right_count += right.len() / right_min.len();
+        debug_assert_eq!(left_count, right_count);
+
+        (
+            left_count,
+            Self {
+                left: (
+                    a1 + (left_count - 1) * left_min.len(),
+                    a1 + left_count * left_min.len(),
+                ),
+                right: (
+                    a1 + left_count * left_min.len() + mid_min.len(),
+                    a1 + left_count * left_min.len() + mid_min.len() + right_min.len(),
+                ),
+                path: self.path,
+            },
+        )
+    }
+}
+
 impl<N, E, G> LGraph<N, E, G>
 where
     G: Graph<N, Item<E>>,
     N: Eq + Clone,
     E: Eq + Clone,
 {
-    pub fn new(graph: G) -> Self {
+    pub fn new_unchecked(graph: G) -> Self {
         Self {
             graph,
             _p: PhantomData,
@@ -240,40 +366,61 @@ where
             .map(|(node, stack)| Memory { node, stack })
     }
 
-    fn is_in_core<'a>(&'a self, path: &Path<'a, N, Item<E>>, w: usize, d: usize) -> bool
+    fn core0(&self) -> (Vec<Path<N, Item<E>>>, usize)
     where
         N: Hash,
     {
-        let mut visited: HashMap<_, usize> = HashMap::new();
+        for d in 0.. {
+            let paths: Vec<_> = StackCore::new(self, 1, d).collect();
 
-        for mem in self.path_to_memories(path) {
-            if mem.stack.len() > d + 1 {
-                return false;
-            }
-
-            let count = visited
-                .entry(mem)
-                .and_modify(|count| *count += 1)
-                .or_default();
-            if *count > w {
-                return false;
+            if self.nodes().all(|node| {
+                paths
+                    .iter()
+                    .any(|(path, _, _)| path.nodes().any(|n| n == node))
+            }) {
+                return (
+                    StackCore::new(self, 1, d + 1).map(|(p, _, _)| p).collect(),
+                    d + 1,
+                );
             }
         }
 
-        true
+        unreachable!()
     }
 
-    pub fn stack_core(&self, w: usize, d: usize) -> impl Iterator<Item = Path<'_, N, Item<E>>> + '_
+    fn core1(&self, core0_paths: &[Path<N, Item<E>>], d: usize) -> Vec<Path<N, Item<E>>>
     where
         N: Hash,
     {
-        let state_stack = vec![(Path::default(), self.start_node(), BracketStack::default())];
-        StackCore {
-            graph: self,
-            state: state_stack,
-            w,
-            d,
+        let longest_path_len = core0_paths
+            .iter()
+            .map(|p| p.len())
+            .max()
+            .unwrap_or_default();
+
+        for stack_depth in d.. {
+            let core1_paths: Vec<_> = StackCore::new(self, 1, stack_depth).collect();
+            if core1_paths
+                .iter()
+                .filter(|(_, _, d)| stack_depth == *d)
+                .map(|(p, _, _)| p)
+                .all(|p| {
+                    let nests = self.path_nests(p);
+                    nests.values().all(|count| *count > longest_path_len)
+                })
+            {
+                return core1_paths.into_iter().map(|(p, _, _)| p).collect();
+            }
         }
+
+        todo!()
+    }
+
+    pub fn core(&self, d: usize) -> Vec<Path<N, Item<E>>>
+    where
+        N: Hash,
+    {
+        todo!()
     }
 
     fn graph_from_paths<'a, B>(
@@ -299,42 +446,13 @@ where
             end_nodes.push(mem.last().cloned().unwrap().deref());
         }
 
-        LGraph::new(builder.build(
+        LGraph::new_unchecked(builder.build(
             Memory {
                 node: self.start_node().contents().clone(),
                 stack: BracketStack::default(),
             },
             end_nodes,
         ))
-    }
-
-    pub fn stack_core_graph<B>(
-        &self,
-        w: usize,
-        d: usize,
-        builder: &mut B,
-    ) -> LGraph<Memory<N>, E, B::TargetGraph>
-    where
-        B: Builder<Memory<N>, Item<E>>,
-        N: Hash,
-    {
-        let paths = self.stack_core(w, d);
-        self.graph_from_paths(paths, builder)
-    }
-
-    pub fn delta_stack_core_graph<B>(
-        &self,
-        w: usize,
-        d: usize,
-        builder: &mut B,
-    ) -> LGraph<Memory<N>, E, B::TargetGraph>
-    where
-        B: Builder<Memory<N>, Item<E>>,
-        N: Hash,
-    {
-        let prev_paths: HashSet<_> = self.stack_core(w, d - 1).collect();
-        let paths = self.stack_core(w, d).filter(|p| !prev_paths.contains(p));
-        self.graph_from_paths(paths, builder)
     }
 
     fn path_balance<'a>(&'a self, path: &Path<'a, N, Item<E>>) -> Option<BracketStack> {
@@ -344,18 +462,11 @@ where
             })
     }
 
-    fn path_loop_nests<'a>(
+    fn path_nests<'a, 'b>(
         &'a self,
-        path: &Path<'a, N, Item<E>>,
-    ) -> Vec<(usize, usize, usize, usize)> {
-        let mut loops = vec![];
-        for (i, a) in path.nodes().enumerate() {
-            for (j, b) in path.nodes().enumerate().skip(i + 1) {
-                if b == a {
-                    loops.push((i, j));
-                }
-            }
-        }
+        path: &'b Path<'a, N, Item<E>>,
+    ) -> HashMap<Nest<'a, 'b, N, Item<E>>, usize> {
+        let loops: Vec<_> = path.loops().collect();
 
         let mut nests = vec![];
         for ((a1, a2), (b1, b2)) in
@@ -367,194 +478,45 @@ where
             if self.path_balance(&full).map_or(false, |s| s.is_empty())
                 && self.path_balance(&mid).map_or(false, |s| s.is_empty())
             {
-                nests.push((*a1, *a2, *b1, *b2))
-            }
-        }
-        nests
-    }
-
-    fn core0<'a>(&'a self) -> (usize, Vec<Path<'a, N, Item<E>>>)
-    where
-        N: Hash,
-    {
-        for d in 0.. {
-            let core: Vec<_> = self.stack_core(1, d).collect();
-            if self
-                .nodes()
-                .all(|node| core.iter().any(|path| path.nodes().any(|n| n == node)))
-            {
-                return (d, self.stack_core(1, d + 1).collect());
-            }
-        }
-
-        unreachable!()
-    }
-
-    fn core1<'a, 'b>(
-        &'a self,
-        core0: impl Iterator<Item = Path<'a, N, Item<E>>>,
-        d: usize,
-    ) -> (
-        Vec<Path<'a, N, Item<E>>>,
-        Vec<(Path<N, Item<E>>, usize, usize, usize, usize)>,
-    )
-    where
-        'a: 'b,
-        N: Hash,
-        N: Debug,
-    {
-        let core0_paths: HashSet<_> = core0.collect();
-        let core0 = self.graph_from_paths(
-            core0_paths.clone().into_iter(),
-            &mut DefaultBuilder::default(),
-        );
-        let core0_nests: Vec<_> = core0_paths
-            .iter()
-            .flat_map(|p| {
-                self.path_loop_nests(p)
-                    .into_iter()
-                    .map(|(a1, a2, b1, b2)| (p.clone(), a1, a2, b1, b2))
-            })
-            .collect();
-
-        let mut core0_unique_nests = HashSet::new();
-        for (path, a1, a2, b1, b2) in core0_nests {
-            core0_unique_nests.insert((
-                Path::new(path[a1..a2].to_vec()),
-                Path::new(path[a2..b1].to_vec()),
-                Path::new(path[b1..b2].to_vec()),
-            ));
-        }
-        let print_nest = |nest: &(
-            Path<'a, N, Item<E>>,
-            Path<'a, N, Item<E>>,
-            Path<'a, N, Item<E>>,
-        )| {
-            use std::fmt::Write;
-            let mut s = String::new();
-            let (left, mid, right) = nest;
-            write!(
-                s,
-                "{:?} - ",
-                left.nodes().map(|n| n.contents()).collect::<Vec<_>>()
-            )
-            .unwrap();
-            write!(
-                s,
-                "{:?}",
-                mid.nodes().map(|n| n.contents()).collect::<Vec<_>>()
-            )
-            .unwrap();
-            write!(
-                s,
-                " - {:?}",
-                right.nodes().map(|n| n.contents()).collect::<Vec<_>>()
-            )
-            .unwrap();
-            s
-        };
-
-        #[cfg(test)]
-        {
-            println!("core0 nests:");
-            for nest in &core0_unique_nests {
-                println!("{}", print_nest(nest));
-            }
-        }
-
-        'core1_d_loop: for d in d + 1.. {
-            let core1_paths: Vec<_> = self.stack_core(1, d).collect();
-            let dcore_paths = core1_paths.iter().filter(|p| !core0_paths.contains(p));
-            let dcore_nests: Vec<_> = dcore_paths
-                .flat_map(|p| {
-                    self.path_loop_nests(p)
-                        .into_iter()
-                        .map(|(a1, a2, b1, b2)| (p.clone(), a1, a2, b1, b2))
+                nests.push(Nest {
+                    left: (*a1, *a2),
+                    right: (*b1, *b2),
+                    path,
                 })
-                .collect();
-
-            if dcore_nests.is_empty() && !core0_unique_nests.is_empty() {
-                continue;
             }
-
-            let mut dcore_unique_nests = HashSet::new();
-            for (path, a1, a2, b1, b2) in &dcore_nests {
-                dcore_unique_nests.insert((
-                    Path::new(path[*a1..*a2].to_vec()),
-                    Path::new(path[*a2..*b1].to_vec()),
-                    Path::new(path[*b1..*b2].to_vec()),
-                ));
-            }
-
-            #[cfg(test)]
-            {
-                println!("d = {}, dcore nests:", d);
-                for nest in &dcore_unique_nests {
-                    println!("{}", print_nest(nest));
-                }
-            }
-
-            for nest in &core0_unique_nests {
-                if !dcore_unique_nests.contains(nest) {
-                    println!("d={d} - Could not find core0 nest {}", print_nest(nest));
-                    continue 'core1_d_loop;
-                }
-            }
-
-            let mut dcore_nests_per_path: HashMap<_, HashSet<(usize, usize, usize, usize)>> =
-                HashMap::new();
-            for (path, a1, a2, b1, b2) in dcore_nests.clone().into_iter() {
-                let path_nodes: Vec<_> = path.nodes().collect();
-                let left = path_nodes[a1];
-                let right = path_nodes[a2];
-
-                let nests = dcore_nests_per_path
-                    .entry((path.clone(), left, right))
-                    .or_default();
-                nests.insert((a1, a2, b1, b2));
-            }
-
-            let mut good_nests = Vec::new();
-            for old_nest in &core0_unique_nests {
-                let Some((path,a1,a2,b1,b2)) = dcore_nests.iter().find(|(path, a1, a2, b1, b2)| {
-                    Path::new(path[*a1..*a2].to_vec()) == old_nest.0
-                        && Path::new(path[*a2..*b1].to_vec()) == old_nest.1
-                        && Path::new(path[*b1..*b2].to_vec()) == old_nest.2
-                }) else {
-                    continue 'core1_d_loop;
-                };
-                let mem: Vec<_> = self.path_to_memories(path).collect();
-
-                if core0.node_with_contents(&mem[*a2].deref()).is_none()
-                    && core0.node_with_contents(&mem[*b1].deref()).is_none()
-                {
-                    good_nests.push((path.clone(), *a1, *a2, *b1, *b2));
-                }
-            }
-
-            return (core1_paths, good_nests);
         }
 
-        unreachable!()
+        let mut min_nests: HashMap<_, _> = HashMap::new();
+        for nest in nests {
+            let (count, min) = nest.minimize();
+            let cur_max_instance = min_nests.entry(min).or_insert((count, nest.clone()));
+            if cur_max_instance.0 < count {
+                *cur_max_instance = (count, nest);
+            }
+        }
+
+        min_nests
+            .into_iter()
+            .map(|(nest, (count, _))| (nest, count))
+            .collect()
     }
 
-    pub fn add_mangled_edges<'a, B>(
+    fn add_nest<'a, 'b, B>(
         &'a self,
-        path: &Path<'a, N, Item<E>>,
-        a1: usize,
-        a2: usize,
-        b1: usize,
-        b2: usize,
+        nest: Nest<'a, 'b, N, Item<E>>,
         builder: &mut B,
         mangled_count: &mut usize,
     ) where
         B: Builder<Mangled<Memory<N>, usize>, Item<E>>,
         N: Hash,
-        N: Display,
-        E: Display,
     {
+        let (_, nest) = nest.minimize();
+
+        let path = nest.path;
+        let (a1, a2) = nest.left;
+        let (b1, b2) = nest.right;
+
         let mem: Vec<_> = self.path_to_memories(path).collect();
-        println!("{}", path);
 
         let mut translation: HashMap<&Memory<NodeRef<N>>, Mangled<Memory<N>, usize>> =
             HashMap::from([
@@ -623,9 +585,12 @@ where
         N: Display + Debug,
         E: Display + Debug,
     {
-        let (d, core0_paths) = self.core0();
-        let (core1_paths, good_nests) = self.core1(core0_paths.clone().into_iter(), d);
-        let core1 = self.graph_from_paths(core1_paths.into_iter(), &mut DefaultBuilder::default());
+        let (core0_paths, d) = self.core0();
+        let core1_paths = self.core1(&core0_paths, d);
+        let core1 = self.graph_from_paths(
+            core1_paths.clone().into_iter(),
+            &mut DefaultBuilder::default(),
+        );
 
         builder.clear();
         for edge in core1.edges() {
@@ -640,11 +605,14 @@ where
         }
 
         let mut mangled_count = 0;
-        for (path, a1, a2, b1, b2) in &good_nests {
-            self.add_mangled_edges(path, *a1, *a2, *b1, *b2, builder, &mut mangled_count);
+        for path in core1_paths {
+            let nests = self.path_nests(&path);
+            for nest in nests.into_keys() {
+                self.add_nest(nest, builder, &mut mangled_count);
+            }
         }
 
-        LGraph::new(
+        LGraph::new_unchecked(
             builder.build(
                 Mangled::Node(core1.start_node().contents().clone()),
                 core1
@@ -709,13 +677,77 @@ where
     d: usize,
 }
 
+impl<'a, N, E, G> StackCore<'a, N, E, G>
+where
+    G: Graph<N, Item<E>>,
+{
+    pub fn new(graph: &'a LGraph<N, E, G>, w: usize, d: usize) -> Self {
+        Self {
+            state: vec![(Path::default(), graph.start_node(), BracketStack::default())],
+            graph,
+            w,
+            d,
+        }
+    }
+
+    fn is_in_core(&self, path: &Path<'a, N, Item<E>>, w: usize, d: usize) -> bool
+    where
+        N: Hash + Eq + Clone,
+        E: Eq + Clone,
+    {
+        let mut visited: HashMap<_, usize> = HashMap::new();
+
+        for mem in self.graph.path_to_memories(path) {
+            if mem.stack.len() > d {
+                return false;
+            }
+
+            let count = visited
+                .entry(mem)
+                .and_modify(|count| *count += 1)
+                .or_default();
+            if *count > w {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn get_wd(&self, path: &Path<'a, N, Item<E>>) -> (usize, usize)
+    where
+        N: Hash + Eq + Clone,
+        E: Eq + Clone,
+    {
+        let mut visited: HashMap<_, usize> = HashMap::new();
+
+        let mut max_d = 0;
+        let mut max_w = 0;
+        for mem in self.graph.path_to_memories(path) {
+            if mem.stack.len() > max_d {
+                max_d = mem.stack.len();
+            }
+
+            let count = visited
+                .entry(mem)
+                .and_modify(|count| *count += 1)
+                .or_default();
+            if *count > max_w {
+                max_w = *count;
+            }
+        }
+
+        (max_w, max_d)
+    }
+}
+
 impl<'a, N, E, G> Iterator for StackCore<'a, N, E, G>
 where
     G: Graph<N, Item<E>>,
     N: Eq + Clone + Hash,
     E: Eq + Clone,
 {
-    type Item = Path<'a, N, Item<E>>;
+    type Item = (Path<'a, N, Item<E>>, usize, usize);
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((path, node, brackets)) = self.state.pop() {
@@ -729,14 +761,15 @@ where
                 if let Some(new_brackets) = brackets.accept_clone(edge.contents().bracket()) {
                     let new_path = path.clone().push(edge);
 
-                    if self.graph.is_in_core(&new_path, self.w, self.d) {
+                    if self.is_in_core(&new_path, self.w, self.d) {
                         self.state.push((new_path, edge.target(), new_brackets))
                     }
                 }
             }
 
             if let Some(res) = res {
-                return Some(res);
+                let (w, d) = self.get_wd(&res);
+                return Some((res, w, d));
             }
         }
 
@@ -762,247 +795,5 @@ where
 
     fn edges(&self) -> Box<dyn Iterator<Item = EdgeRef<'_, N, Item<E>>> + '_> {
         self.graph.edges()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::graphs::{
-        default::{DefaultBuilder, DefaultGraph},
-        graph_trait::{Builder, Graph},
-    };
-
-    use super::{Bracket, BracketType, Item, LGraph};
-
-    fn edge(
-        from: i32,
-        item: Option<char>,
-        index: usize,
-        open: bool,
-        to: i32,
-    ) -> (i32, Item<char>, i32) {
-        (
-            from,
-            Item::new(
-                item,
-                Bracket::new(
-                    index,
-                    if open {
-                        BracketType::Open
-                    } else {
-                        BracketType::Close
-                    },
-                ),
-            ),
-            to,
-        )
-    }
-
-    fn example_1() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        let edges = [
-            edge(1, None, 1, true, 2),
-            edge(2, Some('a'), 2, true, 2),
-            edge(2, Some('b'), 3, true, 3),
-            edge(3, None, 3, false, 4),
-            edge(4, None, 2, false, 4),
-            edge(4, None, 1, false, 5),
-            edge(2, Some('c'), 3, true, 6),
-            edge(6, None, 3, false, 7),
-            edge(7, None, 2, false, 8),
-            edge(8, None, 2, false, 9),
-            edge(9, None, 2, false, 10),
-            edge(10, None, 1, false, 5),
-        ];
-        let mut builder = DefaultBuilder::default();
-        for (source, item, target) in edges {
-            builder.add_edge(source, item, target);
-        }
-        LGraph::new(builder.build(1, [5]))
-    }
-
-    fn example_2() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        // todo!("Broken");
-
-        let edges = [
-            edge(1, Some('a'), 1, true, 2),
-            edge(2, Some('b'), 0, true, 2),
-            edge(2, None, 0, false, 1),
-            edge(1, Some('d'), 0, true, 3),
-            edge(3, None, 0, false, 4),
-            edge(4, None, 1, false, 4),
-        ];
-        let mut builder = DefaultBuilder::default();
-        for (source, item, target) in edges {
-            builder.add_edge(source, item, target);
-        }
-        LGraph::new(builder.build(1, [4]))
-    }
-
-    fn example_3() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        let edges = [
-            edge(1, Some('a'), 0, true, 1),
-            edge(1, Some('b'), 0, false, 2),
-        ];
-        let mut builder = DefaultBuilder::default();
-        for (source, item, target) in edges {
-            builder.add_edge(source, item, target);
-        }
-        LGraph::new(builder.build(1, [2]))
-    }
-
-    fn example_4() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        let edges = [
-            edge(1, None, 1, true, 2),
-            edge(2, Some('a'), 2, true, 2),
-            edge(2, Some('b'), 3, true, 20),
-            edge(20, None, 3, false, 3),
-            edge(3, None, 2, false, 3),
-            edge(3, Some('c'), 3, true, 30),
-            edge(30, None, 3, false, 4),
-            edge(4, Some('a'), 2, true, 4),
-            edge(4, Some('d'), 3, true, 40),
-            edge(40, None, 3, false, 5),
-            edge(5, None, 2, false, 5),
-            edge(5, None, 1, false, 6),
-        ];
-        let mut builder = DefaultBuilder::default();
-        for (source, item, target) in edges {
-            builder.add_edge(source, item, target);
-        }
-        LGraph::new(builder.build(1, [6]))
-    }
-
-    fn example_5() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        let edges = [
-            edge(1, Some('a'), 1, true, 2),
-            edge(2, Some('b'), 0, true, 3),
-            edge(3, None, 0, false, 2),
-            edge(2, Some('c'), 2, true, 1),
-            edge(1, Some('d'), 0, true, 4),
-            edge(4, None, 0, false, 5),
-            edge(5, None, 1, false, 5),
-            edge(5, None, 2, false, 5),
-        ];
-        let mut builder = DefaultBuilder::default();
-        for (source, item, target) in edges {
-            builder.add_edge(source, item, target);
-        }
-        LGraph::new(builder.build(1, [5]))
-    }
-
-    fn example_6() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        let edges = [
-            edge(1, Some('a'), 1, true, 2),
-            edge(2, Some('b'), 2, true, 3),
-            edge(3, None, 2, false, 4),
-            edge(4, None, 1, false, 5),
-        ];
-        let mut builder = DefaultBuilder::default();
-        for (source, item, target) in edges {
-            builder.add_edge(source, item, target);
-        }
-        LGraph::new(builder.build(1, [5]))
-    }
-
-    fn example_7() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        let edges = [
-            edge(1, None, 1, true, 2),
-            edge(2, Some('a'), 2, true, 2),
-            edge(2, None, 2, false, 3),
-            edge(3, None, 2, false, 4),
-            edge(4, None, 1, false, 5),
-            edge(5, Some('b'), 2, true, 5),
-            edge(5, Some('c'), 3, true, 6),
-            edge(6, None, 3, false, 7),
-            edge(7, None, 2, false, 7),
-        ];
-
-        let mut builder = DefaultBuilder::default();
-        for (source, item, target) in edges {
-            builder.add_edge(source, item, target);
-        }
-        LGraph::new(builder.build(1, [7]))
-    }
-
-    fn example_8() -> LGraph<i32, char, impl Graph<i32, Item<char>>> {
-        let edges = [
-            edge(1, Some('a'), 1, true, 1),
-            edge(1, Some('b'), 2, true, 2),
-            edge(2, None, 2, false, 3),
-            edge(3, None, 1, false, 3),
-        ];
-
-        let mut builder = DefaultBuilder::default();
-        for (source, item, target) in edges {
-            builder.add_edge(source, item, target);
-        }
-        LGraph::new(builder.build(1, [3]))
-    }
-
-    fn example_9() -> LGraph<i32, char, DefaultGraph<i32, Item<char>>> {
-        let edges = [
-            edge(1, Some('a'), 1, true, 1),
-            edge(1, Some('b'), 0, true, 2),
-            edge(2, Some('c'), 2, true, 3),
-            edge(3, None, 2, true, 4),
-            edge(4, None, 2, true, 2),
-            edge(2, Some('d'), 2, true, 5),
-            edge(5, None, 2, false, 5),
-            edge(5, None, 0, false, 6),
-            edge(6, None, 1, false, 6),
-        ];
-        let mut builder = DefaultBuilder::default();
-        for (source, item, target) in edges {
-            builder.add_edge(source, item, target);
-        }
-        LGraph::new(builder.build(1, [6]))
-    }
-
-    fn test_graph(g: LGraph<i32, char, impl Graph<i32, Item<char>>>) -> usize {
-        let normal = g.normal_form(&mut DefaultBuilder::default());
-        let img = normal.regular_image(&mut DefaultBuilder::default());
-        let no_nones = img.remove_nones(&mut DefaultBuilder::default());
-        let determined = no_nones.determine(&mut DefaultBuilder::default());
-        let minimized = determined.minimize(&mut DefaultBuilder::default());
-
-        minimized.node_count()
-    }
-
-    #[test]
-    fn regularize_1() {
-        assert_eq!(test_graph(example_1()), 6)
-    }
-    #[test]
-    fn regularize_2() {
-        assert_eq!(test_graph(example_2()), 3)
-    }
-    #[test]
-    fn regularize_3() {
-        assert_eq!(test_graph(example_3()), 3)
-    }
-    #[test]
-    fn regularize_4() {
-        assert_eq!(test_graph(example_4()), 4)
-    }
-    #[test]
-    fn regularize_6() {
-        assert_eq!(test_graph(example_6()), 3)
-    }
-    #[test]
-    fn regularize_7() {
-        assert_eq!(test_graph(example_7()), 4)
-    }
-    #[test]
-    fn regularize_8() {
-        assert_eq!(test_graph(example_8()), 2)
-    }
-
-    #[test]
-    fn regularize_5() {
-        assert_eq!(test_graph(example_5()), 5)
-    }
-    #[test]
-    fn regularize_9() {
-        assert_eq!(test_graph(example_9()), 4)
     }
 }

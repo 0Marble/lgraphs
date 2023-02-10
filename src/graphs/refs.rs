@@ -302,4 +302,14 @@ impl<'a, N, E> Path<'a, N, E> {
 
         path
     }
+
+    pub fn loops(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.nodes().enumerate().flat_map(|(i, a)| {
+            self.nodes()
+                .enumerate()
+                .skip(i + 1)
+                .filter(move |(_, b)| &a == b)
+                .map(move |(j, _)| (i, j))
+        })
+    }
 }

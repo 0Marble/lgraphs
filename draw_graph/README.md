@@ -6,6 +6,7 @@ Options:
     
 - `input=[FILE | -]` **(required)** - input file for the graph. If set to `-`, the graph is read from stdin.
 - `output=[FILE]` **(required)** - output file for the resulting image.
+- `font=[FILE]` **(required)** - what font to use.
 - `--lgraph` *(optional)* - if set, read the file as an lgraph.
 - `layout=[LAYOUT]` *(optional)* - determines the node layout. If not specified, `auto` is used by default. Available layouts:
     - `auto` - automatic layout.
@@ -46,7 +47,7 @@ Node names and edge items can be single characters or numbers. If an `item` fiel
 
 First element in the array is a node name, than x coordinate, than y. 
 
-    cargo run --package draw_graph -- --lgraph input=graph.json output=graph.png layout=manual locations=locations.json
+    cargo run --package draw_graph -- --lgraph input=graph.json output=graph.png layout=manual locations=locations.json font=some_font.otf
 
 
 Result:

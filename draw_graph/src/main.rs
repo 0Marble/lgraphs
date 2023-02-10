@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, fs::File, io::Read};
+use std::{collections::HashMap, fs::File, io::Read};
 
 use imageproc::{
     drawing::{
@@ -9,14 +9,11 @@ use imageproc::{
 use json::JsonValue;
 use lgraphs::{
     drawing::{
-        drawer::{draw_graph, DrawCommand, LabelDrawer},
+        drawer::{draw_graph, DrawCommand, LabelDrawer, LabelDrawerImpl},
         layout::{Layout, ManualGridLayout, MinGridLayout},
     },
-    graphs::{
-        default::DefaultBuilder,
-        graph_trait::{Builder, Graph},
-        lgraph::{Bracket, Item, LGraph},
-    },
+    graphs::{default::DefaultBuilder, graph_trait::Graph, lgraph::Item},
+    io::reading::{read_graph, read_label, read_lgraph, Label, ParseError},
 };
 
 use image::{Rgb, RgbImage};
@@ -25,8 +22,9 @@ use rusttype::{Font, Scale};
 fn render_graph<'a, N, E, G, L>(
     layout: &L,
     file_name: &str,
-    node_drawer: &impl LabelDrawer<N>,
-    edge_drawer: &impl LabelDrawer<E>,
+    node_drawer: &impl LabelDrawer<Obj = &'a N>,
+    edge_drawer: &impl LabelDrawer<Obj = &'a E>,
+    font_file: &str,
 ) -> Result<(), impl std::error::Error>
 where
     N: 'a,
@@ -41,7 +39,8 @@ where
     );
 
     let text_scale = 15.0;
-    let font = Vec::from(include_bytes!("../../fonts/gnu-free/FreeMonoBoldOblique.otf") as &[u8]);
+    let mut font = Vec::new();
+    File::open(font_file)?.read_to_end(&mut font)?;
     let font = Font::try_from_vec(font).unwrap();
     let commands = draw_graph(layout, text_scale, 3, 10, node_drawer, edge_drawer);
 
@@ -90,182 +89,6 @@ where
     }
 
     image.save(file_name)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Label {
-    Int(i32),
-    Char(char),
-}
-
-impl Display for Label {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Label::Int(i) => write!(f, "{}", i),
-            Label::Char(c) => write!(f, "{}", c),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum ParseError {
-    ExpectedLabel(String),
-    ExpectedArrayOfLabels(String),
-    ExpectedArrayOfEdges(String),
-    ExpectedBracket(String),
-    ExpectedBool(String),
-    ExpectedNumber(String),
-    ExpectedArrayOfLocations,
-    ExpectedLocation(usize),
-    NoSuchNode(String),
-}
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for ParseError {}
-
-fn read_label(val: &JsonValue, field_name: &str) -> Result<Label, Box<dyn std::error::Error>> {
-    let label = val
-        .as_i32()
-        .map(Label::Int)
-        .or_else(|| val.as_str().and_then(|s| s.chars().next()).map(Label::Char))
-        .ok_or_else(|| ParseError::ExpectedLabel(field_name.to_string()))?;
-
-    Ok(label)
-}
-
-fn read_edge(
-    val: &JsonValue,
-    field_name: &str,
-) -> Result<(Label, Option<Label>, Label), Box<dyn std::error::Error>> {
-    let source = read_label(&val["source"], &format!("{}[source]", field_name))?;
-    let target = read_label(&val["target"], &format!("{}[target]", field_name))?;
-    let item = read_label(&val["item"], &format!("{}[item]", field_name)).ok();
-
-    Ok((source, item, target))
-}
-
-fn read_graph<B>(src: &str, builder: &mut B) -> Result<B::TargetGraph, Box<dyn std::error::Error>>
-where
-    B: Builder<Label, Option<Label>>,
-{
-    let json = json::parse(src)?;
-    let start_node = read_label(&json["start_node"], "start_node")?;
-    let end_nodes = match &json["end_nodes"] {
-        JsonValue::Array(a) => a
-            .iter()
-            .enumerate()
-            .map(|(i, v)| read_label(v, &format!("end_nodes[{}]", i)))
-            .collect::<Result<Vec<_>, _>>()?,
-        _ => Err(ParseError::ExpectedArrayOfLabels("end_nodes".to_string()))?,
-    };
-    let edges = match &json["edges"] {
-        JsonValue::Array(a) => a
-            .iter()
-            .enumerate()
-            .map(|(i, v)| read_edge(v, &format!("edges[{}]", i)))
-            .collect::<Result<Vec<_>, _>>()?,
-        _ => Err(ParseError::ExpectedArrayOfEdges("edges".to_string()))?,
-    };
-
-    builder.clear();
-    for (source, edge, target) in edges {
-        builder.add_edge(source, edge, target);
-    }
-
-    Ok(builder.build(start_node, end_nodes))
-}
-
-fn read_lgraph_edge(
-    val: &JsonValue,
-    field_name: &str,
-) -> Result<(Label, Item<Label>, Label), Box<dyn std::error::Error>> {
-    let source = read_label(&val["source"], &format!("{}[source]", field_name))?;
-    let target = read_label(&val["target"], &format!("{}[target]", field_name))?;
-    let item = read_label(&val["item"], &format!("{}[item]", field_name)).ok();
-    let bracket = match &val["bracket"] {
-        JsonValue::Object(obj) => Bracket::new(
-            obj["index"].as_usize().ok_or_else(|| {
-                ParseError::ExpectedNumber(format!("{}[bracket][index]", field_name))
-            })?,
-            match obj["is_open"].as_bool() {
-                Some(true) => lgraphs::graphs::lgraph::BracketType::Open,
-                Some(false) => lgraphs::graphs::lgraph::BracketType::Close,
-                _ => Err(ParseError::ExpectedBool(format!(
-                    "{}[bracket][is_open]",
-                    field_name
-                )))?,
-            },
-        ),
-        _ => Err(ParseError::ExpectedBracket(format!(
-            "{}[bracket]",
-            field_name
-        )))?,
-    };
-
-    Ok((source, Item::new(item, bracket), target))
-}
-
-fn read_lgraph<B>(
-    src: &str,
-    builder: &mut B,
-) -> Result<LGraph<Label, Label, B::TargetGraph>, Box<dyn std::error::Error>>
-where
-    B: Builder<Label, Item<Label>>,
-    B::TargetGraph: Graph<Label, Item<Label>>,
-{
-    let json = json::parse(src)?;
-    let start_node = read_label(&json["start_node"], "start_node")?;
-    let end_nodes = match &json["end_nodes"] {
-        JsonValue::Array(a) => a
-            .iter()
-            .enumerate()
-            .map(|(i, v)| read_label(v, &format!("end_nodes[{}]", i)))
-            .collect::<Result<Vec<_>, _>>()?,
-        _ => Err(ParseError::ExpectedArrayOfLabels("end_nodes".to_string()))?,
-    };
-    let edges = match &json["edges"] {
-        JsonValue::Array(a) => a
-            .iter()
-            .enumerate()
-            .map(|(i, v)| read_lgraph_edge(v, &format!("edges[{}]", i)))
-            .collect::<Result<Vec<_>, _>>()?,
-        _ => Err(ParseError::ExpectedArrayOfEdges("edges".to_string()))?,
-    };
-
-    builder.clear();
-    for (source, edge, target) in edges {
-        builder.add_edge(source, edge, target);
-    }
-
-    Ok(LGraph::new(builder.build(start_node, end_nodes)))
-}
-
-struct Drawer;
-impl LabelDrawer<Label> for Drawer {
-    fn draw(&self, label: &Label) -> String {
-        match label {
-            Label::Int(i) => i.to_string(),
-            Label::Char(c) => c.to_string(),
-        }
-    }
-}
-impl LabelDrawer<Option<Label>> for Drawer {
-    fn draw(&self, label: &Option<Label>) -> String {
-        match label {
-            Some(l) => self.draw(l),
-            None => "_".to_string(),
-        }
-    }
-}
-impl LabelDrawer<Item<Label>> for Drawer {
-    fn draw(&self, label: &Item<Label>) -> String {
-        label.to_string()
-    }
 }
 
 fn read_location(
@@ -325,11 +148,16 @@ fn main() {
     let input = args
         .iter()
         .find_map(|arg| arg.strip_prefix("input="))
-        .expect("Please specify an input file with input=file");
+        .expect("Please specify an input file with input=[FILE | -]");
     let output = args
         .iter()
         .find_map(|arg| arg.strip_prefix("output="))
-        .expect("Please specify an output file with output=file");
+        .expect("Please specify an output file with output=[FILE]");
+    let font = args
+        .iter()
+        .find_map(|arg| arg.strip_prefix("font="))
+        .expect("Please specify which font to use with font=[FILE]");
+
     let layout = args
         .iter()
         .find_map(|arg| arg.strip_prefix("layout="))
@@ -386,8 +214,14 @@ fn main() {
             other => panic!("Unknown layout {}", other),
         };
 
-        render_graph(&layout, output, &Drawer, &Drawer)
-            .unwrap_or_else(|e| panic!("Could not render a graph to {}: {}", output, e));
+        render_graph(
+            &layout,
+            output,
+            &LabelDrawerImpl::<&Label>::new(),
+            &LabelDrawerImpl::<&Item<Label>>::new(),
+            font,
+        )
+        .unwrap_or_else(|e| panic!("Could not render a graph to {}: {}", output, e));
     } else {
         let g = read_graph(&src, &mut DefaultBuilder::default())
             .unwrap_or_else(|e| panic!("Could not parse graph: {}", e));
@@ -418,8 +252,14 @@ fn main() {
             }
             other => panic!("Unknown layout {}", other),
         };
-        render_graph(&layout, output, &Drawer, &Drawer)
-            .unwrap_or_else(|e| panic!("Could not render a graph to {}: {}", output, e));
+        render_graph(
+            &layout,
+            output,
+            &LabelDrawerImpl::<&Label>::new(),
+            &LabelDrawerImpl::<&Option<Label>>::new(),
+            font,
+        )
+        .unwrap_or_else(|e| panic!("Could not render a graph to {}: {}", output, e));
     }
 
     println!(

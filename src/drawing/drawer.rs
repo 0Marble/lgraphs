@@ -1,6 +1,12 @@
-use crate::graphs::{
-    graph_trait::Graph,
-    refs::{EdgeRef, NodeRef},
+use std::marker::PhantomData;
+
+use crate::{
+    graphs::{
+        graph_trait::Graph,
+        lgraph::{Bracket, BracketStack, Item},
+        refs::{EdgeRef, NodeRef},
+    },
+    io::reading::Label,
 };
 
 use super::{
@@ -16,8 +22,98 @@ pub enum DrawCommand {
     Text { bounds: Rect, text: String },
 }
 
-pub trait LabelDrawer<T> {
-    fn draw(&self, label: &T) -> String;
+pub trait LabelDrawer {
+    type Obj;
+    fn draw(&self, label: Self::Obj) -> String;
+}
+
+pub struct LabelDrawerImpl<T> {
+    _p: PhantomData<*const T>,
+}
+impl<T> LabelDrawerImpl<T> {
+    pub fn new() -> Self {
+        Self { _p: PhantomData }
+    }
+}
+
+impl<T> Default for LabelDrawerImpl<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> LabelDrawer for LabelDrawerImpl<&'a char> {
+    type Obj = &'a char;
+    fn draw(&self, obj: &'a char) -> String {
+        format!("\"{}\"", obj)
+    }
+}
+impl<'a> LabelDrawer for LabelDrawerImpl<&'a i32> {
+    type Obj = &'a i32;
+    fn draw(&self, obj: &'a i32) -> String {
+        obj.to_string()
+    }
+}
+impl<'a> LabelDrawer for LabelDrawerImpl<&'a Label> {
+    type Obj = &'a Label;
+    fn draw(&self, obj: &'a Label) -> String {
+        match obj {
+            Label::Int(i) => i.to_string(),
+            Label::Char(c) => format!("\"{}\"", c),
+        }
+    }
+}
+impl<'a> LabelDrawer for LabelDrawerImpl<&'a usize> {
+    type Obj = &'a usize;
+    fn draw(&self, obj: &'a usize) -> String {
+        obj.to_string()
+    }
+}
+impl<'a> LabelDrawer for LabelDrawerImpl<&'a BracketStack> {
+    type Obj = &'a BracketStack;
+    fn draw(&self, obj: &'a BracketStack) -> String {
+        let mut s = String::new();
+        for index in obj.brackets().map(|b| b.index()) {
+            s = format!("{s}{}", index)
+        }
+
+        s
+    }
+}
+impl<'a> LabelDrawer for LabelDrawerImpl<&'a Bracket> {
+    type Obj = &'a Bracket;
+    fn draw(&self, obj: &'a Bracket) -> String {
+        format!("{}{}", if obj.is_open() { "[" } else { "]" }, obj.index())
+    }
+}
+
+impl<'a, T> LabelDrawer for LabelDrawerImpl<&'a Option<T>>
+where
+    LabelDrawerImpl<&'a T>: LabelDrawer<Obj = &'a T>,
+{
+    type Obj = &'a Option<T>;
+    fn draw(&self, obj: &'a Option<T>) -> String {
+        match obj {
+            Some(l) => LabelDrawerImpl::<&'a T>::new().draw(l),
+            None => "_".to_string(),
+        }
+    }
+}
+impl<'a, T> LabelDrawer for LabelDrawerImpl<&'a Item<T>>
+where
+    LabelDrawerImpl<&'a T>: LabelDrawer<Obj = &'a T>,
+{
+    type Obj = &'a Item<T>;
+    fn draw(&self, obj: &'a Item<T>) -> String {
+        let item = match obj.item() {
+            Some(item) => LabelDrawerImpl::<&'a T>::new().draw(item),
+            None => todo!(),
+        };
+        format!(
+            "{item},{}",
+            LabelDrawerImpl::<&'a Bracket>::new().draw(&obj.bracket())
+        )
+    }
 }
 
 pub fn draw_graph<'a, N, E, G, L>(
@@ -25,8 +121,8 @@ pub fn draw_graph<'a, N, E, G, L>(
     text_size: f32,
     min_char_count: usize,
     max_char_count: usize,
-    node_drawer: &impl LabelDrawer<N>,
-    edge_drawer: &impl LabelDrawer<E>,
+    node_drawer: &impl LabelDrawer<Obj = &'a N>,
+    edge_drawer: &impl LabelDrawer<Obj = &'a E>,
 ) -> Vec<DrawCommand>
 where
     G: Graph<N, E>,
@@ -86,15 +182,15 @@ where
     commands
 }
 
-fn draw_node<'a, N, E, G, L>(
+fn draw_node<'a, N, E: 'a, G, L>(
     commands: &mut Vec<DrawCommand>,
     node: NodeRef<'a, N>,
     layout: &L,
     text_size: f32,
     min_char_count: usize,
     max_char_count: usize,
-    node_drawer: &impl LabelDrawer<N>,
-    _edge_drawer: &impl LabelDrawer<E>,
+    node_drawer: &impl LabelDrawer<Obj = &'a N>,
+    edge_drawer: &impl LabelDrawer<Obj = &'a E>,
 ) where
     G: Graph<N, E>,
     L: Layout<'a, N, E, G>,
@@ -118,8 +214,8 @@ fn draw_edge<'a, N, E, G, L>(
     text_size: f32,
     min_char_count: usize,
     max_char_count: usize,
-    node_drawer: &impl LabelDrawer<N>,
-    edge_drawer: &impl LabelDrawer<E>,
+    node_drawer: &impl LabelDrawer<Obj = &'a N>,
+    edge_drawer: &impl LabelDrawer<Obj = &'a E>,
 ) where
     G: Graph<N, E>,
     L: Layout<'a, N, E, G>,
@@ -169,15 +265,15 @@ fn draw_edge<'a, N, E, G, L>(
     commands.push(DrawCommand::Text { bounds, text });
 }
 
-fn draw_arrow<'a, N, E, G, L>(
+fn draw_arrow<'a, N: 'a, E: 'a, G, L>(
     commands: &mut Vec<DrawCommand>,
     from: Vec2,
     to: Vec2,
     control1: Vec2,
     control2: Vec2,
     layout: &L,
-    _node_drawer: &impl LabelDrawer<N>,
-    _edge_drawer: &impl LabelDrawer<E>,
+    node_drawer: &impl LabelDrawer<Obj = &'a N>,
+    edge_drawer: &impl LabelDrawer<Obj = &'a E>,
 ) where
     G: Graph<N, E>,
     L: Layout<'a, N, E, G>,

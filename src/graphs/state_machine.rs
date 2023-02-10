@@ -42,12 +42,9 @@ where
     N: Eq + Clone,
     E: Eq + Clone,
 {
-    pub fn remove_nones<'a, B>(
-        &'a self,
-        builder: &mut B,
-    ) -> StateMachine<&'a N, &'a E, B::TargetGraph>
+    pub fn remove_nones<B>(&self, builder: &mut B) -> StateMachine<N, E, B::TargetGraph>
     where
-        B: Builder<&'a N, &'a E>,
+        B: Builder<N, E>,
     {
         let mut end_nodes = vec![];
         for node in self.nodes() {
@@ -55,7 +52,7 @@ where
                 .lambda_closure(node)
                 .map(|n| {
                     if self.is_end_node(n) {
-                        end_nodes.push(node.contents());
+                        end_nodes.push(node.contents().clone());
                     }
 
                     n
@@ -63,11 +60,15 @@ where
                 .flat_map(|n| self.edges_from(n))
                 .filter_map(|e| e.contents().as_ref().map(|item| (item, e.target())))
             {
-                builder.add_edge(node.contents(), item, target.contents());
+                builder.add_edge(
+                    node.contents().clone(),
+                    item.clone(),
+                    target.contents().clone(),
+                );
             }
         }
 
-        StateMachine::new(builder.build(self.start_node().contents(), end_nodes))
+        StateMachine::new(builder.build(self.start_node().contents().clone(), end_nodes))
     }
 
     fn lambda_closure<'a>(&'a self, node: NodeRef<'a, N>) -> impl Iterator<Item = NodeRef<'a, N>> {

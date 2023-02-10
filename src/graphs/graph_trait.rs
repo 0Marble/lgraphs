@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt::Display};
 
 use super::refs::{EdgeRef, NodeRef, Path};
 
