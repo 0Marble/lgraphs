@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt::{Debug, Display},
     hash::Hash,
     iter::once,
@@ -244,14 +244,11 @@ impl<'a, 'b, N, E> PartialEq for Nest<'a, 'b, N, E> {
     }
 }
 
-impl<'a, 'b, N, E> Nest<'a, 'b, N, E> {
-    pub fn is_equivalent(&self, other: &Self) -> bool {
-        self.minimize().1 == other.minimize().1
-    }
-    pub fn is_smaller(&self, other: &Self) -> bool {
-        self.minimize().0 < other.minimize().0
-    }
-
+impl<'a, 'b, N, E> Nest<'a, 'b, N, E>
+where
+    N: Debug,
+    E: Debug,
+{
     pub fn minimize(&self) -> (usize, Self) {
         let (a1, a2) = self.left;
         let (b1, b2) = self.right;
@@ -281,9 +278,10 @@ impl<'a, 'b, N, E> Nest<'a, 'b, N, E> {
 
         let end = right.len() - 1;
         let mut right_min = None;
-        'find_right_min: for candidate in (1..=end)
-            .filter(|start| left[*start] == left[end])
-            .map(|start| &left[start..=end])
+        'find_right_min: for candidate in (0..=end)
+            .rev()
+            .filter(|start| right[*start] == right[end])
+            .map(|start| &right[start..=end])
         {
             let mut remaining = right;
             loop {
@@ -314,7 +312,17 @@ impl<'a, 'b, N, E> Nest<'a, 'b, N, E> {
         let mid_min = remaining;
         left_count += left.len() / left_min.len();
         right_count += right.len() / right_min.len();
-        debug_assert_eq!(left_count, right_count);
+
+        // println!(
+        //     "{}\n\t{}*{}\n\t{}\n\t{}*{}\n",
+        //     self.path,
+        //     Path::new(left_min.to_vec()),
+        //     left_count,
+        //     Path::new(mid_min.to_vec()),
+        //     Path::new(right_min.to_vec()),
+        //     right_count
+        // );
+        // debug_assert_eq!(left_count, right_count);
 
         (
             left_count,
@@ -336,8 +344,8 @@ impl<'a, 'b, N, E> Nest<'a, 'b, N, E> {
 impl<N, E, G> LGraph<N, E, G>
 where
     G: Graph<N, Item<E>>,
-    N: Eq + Clone,
-    E: Eq + Clone,
+    N: Eq + Clone + Debug,
+    E: Eq + Clone + Debug,
 {
     pub fn new_unchecked(graph: G) -> Self {
         Self {
@@ -399,21 +407,64 @@ where
             .unwrap_or_default();
 
         for stack_depth in d.. {
+            dbg!(stack_depth);
             let core1_paths: Vec<_> = StackCore::new(self, 1, stack_depth).collect();
+
             if core1_paths
                 .iter()
-                .filter(|(_, _, d)| stack_depth == *d)
                 .map(|(p, _, _)| p)
-                .all(|p| {
+                .filter_map(|p| {
                     let nests = self.path_nests(p);
-                    nests.values().all(|count| *count > longest_path_len)
+                    if nests.values().any(|count| *count > longest_path_len) || nests.is_empty() {
+                        None
+                    } else {
+                        Some(nests)
+                    }
                 })
+                .all(|nests| nests.into_values().all(|count| count == longest_path_len))
             {
                 return core1_paths.into_iter().map(|(p, _, _)| p).collect();
             }
+
+            // if core1_paths
+            //     .iter()
+            //     .filter(|(_, _, d)| stack_depth == *d)
+            //     .map(|(p, _, _)| p)
+            //     .all(|p| {
+            //         let nests = self.path_nests(p);
+            //         nests.values().all(|count| *count > longest_path_len)
+            //     })
+            // {
+            //     return core1_paths.into_iter().map(|(p, _, _)| p).collect();
+            // }
         }
 
         todo!()
+    }
+
+    fn meaningful_nests<'a, 'b>(
+        &'a self,
+        core0_paths: &[Path<'a, N, Item<E>>],
+        core1_paths: &'b [Path<'a, N, Item<E>>],
+    ) -> Vec<Nest<'a, 'b, N, Item<E>>> {
+        let core0 =
+            self.graph_from_paths(core0_paths.iter().cloned(), &mut DefaultBuilder::default());
+
+        let mut nests = vec![];
+        for path in core1_paths {
+            let mem: Vec<_> = self.path_to_memories(path).collect();
+            for (nest, _) in self.path_nests(path) {
+                let left_end = &mem[nest.left.1];
+                let right_start = &mem[nest.right.0];
+                if core0.node_with_contents(&left_end.deref()).is_none()
+                    && core0.node_with_contents(&right_start.deref()).is_none()
+                {
+                    nests.push(nest)
+                }
+            }
+        }
+
+        nests
     }
 
     pub fn core(&self, d: usize) -> Vec<Path<N, Item<E>>>
@@ -509,6 +560,8 @@ where
     ) where
         B: Builder<Mangled<Memory<N>, usize>, Item<E>>,
         N: Hash,
+        N: Debug,
+        E: Debug,
     {
         let (_, nest) = nest.minimize();
 
@@ -587,6 +640,8 @@ where
     {
         let (core0_paths, d) = self.core0();
         let core1_paths = self.core1(&core0_paths, d);
+        let nests = self.meaningful_nests(&core0_paths, &core1_paths);
+
         let core1 = self.graph_from_paths(
             core1_paths.clone().into_iter(),
             &mut DefaultBuilder::default(),
@@ -605,11 +660,8 @@ where
         }
 
         let mut mangled_count = 0;
-        for path in core1_paths {
-            let nests = self.path_nests(&path);
-            for nest in nests.into_keys() {
-                self.add_nest(nest, builder, &mut mangled_count);
-            }
+        for nest in nests {
+            self.add_nest(nest, builder, &mut mangled_count);
         }
 
         LGraph::new_unchecked(
@@ -680,6 +732,8 @@ where
 impl<'a, N, E, G> StackCore<'a, N, E, G>
 where
     G: Graph<N, Item<E>>,
+    N: Debug,
+    E: Debug,
 {
     pub fn new(graph: &'a LGraph<N, E, G>, w: usize, d: usize) -> Self {
         Self {
@@ -744,8 +798,8 @@ where
 impl<'a, N, E, G> Iterator for StackCore<'a, N, E, G>
 where
     G: Graph<N, Item<E>>,
-    N: Eq + Clone + Hash,
-    E: Eq + Clone,
+    N: Eq + Clone + Hash + Debug,
+    E: Eq + Clone + Debug,
 {
     type Item = (Path<'a, N, Item<E>>, usize, usize);
 

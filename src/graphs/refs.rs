@@ -174,8 +174,8 @@ pub struct Path<'a, N, E> {
 
 impl<'a, N, E> Display for Path<'a, N, E>
 where
-    N: Display,
-    E: Display,
+    N: Debug,
+    E: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.edges.is_empty() {
@@ -184,16 +184,21 @@ where
 
         write!(
             f,
-            "{} - {}",
+            "{:?} - {:?}",
             self.edges[0].source().contents(),
             self.edges[0].contents()
         )?;
 
         for edge in self.edges().skip(1) {
-            write!(f, " -> {} - {}", edge.source().contents(), edge.contents())?;
+            write!(
+                f,
+                " -> {:?} - {:?}",
+                edge.source().contents(),
+                edge.contents()
+            )?;
         }
 
-        write!(f, "-> {}", self.edges.last().unwrap().target().contents())
+        write!(f, "-> {:?}", self.edges.last().unwrap().target().contents())
     }
 }
 

@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{collections::HashSet, marker::PhantomData};
 
 use crate::{
     graphs::{
@@ -20,6 +20,17 @@ pub enum DrawCommand {
     Circle(Circle),
     Curve(Curve),
     Text { bounds: Rect, text: String },
+}
+
+impl DrawCommand {
+    fn priority(&self) -> usize {
+        match self {
+            DrawCommand::Rect(_) => 0,
+            DrawCommand::Circle(_) => 0,
+            DrawCommand::Curve(_) => 0,
+            DrawCommand::Text { .. } => 1,
+        }
+    }
 }
 
 pub trait LabelDrawer {
@@ -45,7 +56,7 @@ impl<T> Default for LabelDrawerImpl<T> {
 impl<'a> LabelDrawer for LabelDrawerImpl<&'a char> {
     type Obj = &'a char;
     fn draw(&self, obj: &'a char) -> String {
-        format!("\"{}\"", obj)
+        format!("{}", obj)
     }
 }
 impl<'a> LabelDrawer for LabelDrawerImpl<&'a i32> {
@@ -59,7 +70,7 @@ impl<'a> LabelDrawer for LabelDrawerImpl<&'a Label> {
     fn draw(&self, obj: &'a Label) -> String {
         match obj {
             Label::Int(i) => i.to_string(),
-            Label::Char(c) => format!("\"{}\"", c),
+            Label::Char(c) => format!("{}", c),
         }
     }
 }
@@ -107,7 +118,7 @@ where
     fn draw(&self, obj: &'a Item<T>) -> String {
         let item = match obj.item() {
             Some(item) => LabelDrawerImpl::<&'a T>::new().draw(item),
-            None => todo!(),
+            None => "_".to_string(),
         };
         format!(
             "{item},{}",
@@ -144,18 +155,33 @@ where
             edge_drawer,
         );
     }
-    for edge in layout.graph().edges() {
-        draw_edge(
-            &mut commands,
-            edge,
-            layout,
-            text_size,
-            min_char_count,
-            max_char_count,
-            node_drawer,
-            edge_drawer,
-        );
+
+    for source in layout.graph().nodes() {
+        let targets: HashSet<_> = layout
+            .graph()
+            .edges_from(source)
+            .map(|e| e.target())
+            .collect();
+        for target in targets {
+            let edges: Vec<_> = layout.graph().edges_from_to(source, target).collect();
+            let edge_count = edges.len();
+            for (i, edge) in edges.into_iter().enumerate() {
+                draw_edge(
+                    &mut commands,
+                    edge,
+                    layout,
+                    text_size,
+                    min_char_count,
+                    max_char_count,
+                    node_drawer,
+                    edge_drawer,
+                    edge_count,
+                    i,
+                );
+            }
+        }
     }
+
     for end_node in layout.graph().end_nodes() {
         let Some(pos) = layout.node(end_node) else {continue;};
         commands.push(DrawCommand::Circle(Circle {
@@ -179,9 +205,12 @@ where
         );
     }
 
+    commands.sort_by_key(|a| a.priority());
+
     commands
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_node<'a, N, E: 'a, G, L>(
     commands: &mut Vec<DrawCommand>,
     node: NodeRef<'a, N>,
@@ -190,7 +219,7 @@ fn draw_node<'a, N, E: 'a, G, L>(
     min_char_count: usize,
     max_char_count: usize,
     node_drawer: &impl LabelDrawer<Obj = &'a N>,
-    edge_drawer: &impl LabelDrawer<Obj = &'a E>,
+    _edge_drawer: &impl LabelDrawer<Obj = &'a E>,
 ) where
     G: Graph<N, E>,
     L: Layout<'a, N, E, G>,
@@ -207,6 +236,7 @@ fn draw_node<'a, N, E: 'a, G, L>(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_edge<'a, N, E, G, L>(
     commands: &mut Vec<DrawCommand>,
     edge: EdgeRef<'a, N, E>,
@@ -216,31 +246,46 @@ fn draw_edge<'a, N, E, G, L>(
     max_char_count: usize,
     node_drawer: &impl LabelDrawer<Obj = &'a N>,
     edge_drawer: &impl LabelDrawer<Obj = &'a E>,
+
+    edge_count: usize,
+    cur_edge: usize,
 ) where
     G: Graph<N, E>,
     L: Layout<'a, N, E, G>,
 {
+    let Some(from) = layout.node(edge.source()) else {return;};
+
+    let total_angle = match edge_count {
+        1 => 0.0,
+        2 => std::f32::consts::FRAC_PI_4,
+        3 => std::f32::consts::FRAC_PI_3,
+        _ => std::f32::consts::FRAC_PI_2,
+    };
+    let segment_size = total_angle / (edge_count as f32);
+    let cur_segment =
+        segment_size * (((cur_edge + 1) / 2) as f32) * (-1.0f32).powi(cur_edge as i32);
+
     let line = if edge.source() == edge.target() {
-        let Some(pos) = layout.node(edge.source()) else {return;};
-
         let angle = std::f32::consts::FRAC_PI_8;
-        let dir = Vec2::new(0.0, pos.r).normalize();
-        let left = dir.rotate(angle);
-        let right = dir.rotate(-angle);
+        let dir = Vec2::new(0.0, from.r).normalize();
+        let left = dir.rotate(angle + cur_segment);
+        let right = dir.rotate(-angle + cur_segment);
 
-        let p1 = pos.center() + left * pos.r;
-        let p4 = pos.center() + right * pos.r;
-        let p2 = pos.center() + left * (pos.r + 0.5 * layout.spacing());
-        let p3 = pos.center() + right * (pos.r + 0.5 * layout.spacing());
+        let p1 = from.center() + left * from.r;
+        let p4 = from.center() + right * from.r;
+        let p2 = from.center() + left * (from.r + 0.5 * layout.spacing());
+        let p3 = from.center() + right * (from.r + 0.5 * layout.spacing());
         Curve::from_points(p1, p2, p3, p4)
     } else {
-        let Some(from) = layout.node(edge.source()) else {return};
         let Some(to) = layout.node(edge.target()) else {return};
         let dist = from.dist(to);
         let droopiness =
             (dist / Vec2::new(layout.width(), layout.height()).len()).powf(0.7) * layout.spacing();
+        let dir = (to.center() - from.center()).normalize();
+        let start = dir.rotate(cur_segment) * from.r + from.center();
+        let end = (dir * -1.0).rotate(-cur_segment) * to.r + to.center();
 
-        from.line_between(to, droopiness)
+        Curve::between(droopiness, start, end)
     };
 
     draw_arrow(
@@ -265,6 +310,7 @@ fn draw_edge<'a, N, E, G, L>(
     commands.push(DrawCommand::Text { bounds, text });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_arrow<'a, N: 'a, E: 'a, G, L>(
     commands: &mut Vec<DrawCommand>,
     from: Vec2,
@@ -272,8 +318,8 @@ fn draw_arrow<'a, N: 'a, E: 'a, G, L>(
     control1: Vec2,
     control2: Vec2,
     layout: &L,
-    node_drawer: &impl LabelDrawer<Obj = &'a N>,
-    edge_drawer: &impl LabelDrawer<Obj = &'a E>,
+    _node_drawer: &impl LabelDrawer<Obj = &'a N>,
+    _edge_drawer: &impl LabelDrawer<Obj = &'a E>,
 ) where
     G: Graph<N, E>,
     L: Layout<'a, N, E, G>,

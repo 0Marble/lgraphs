@@ -156,17 +156,7 @@ impl Circle {
         let start = self.center() + dir.normalize() * self.r;
         Curve::straight(start, point)
     }
-    pub fn line_between(&self, other: Self, droopiness: f32) -> Curve {
-        let dir = (other.center() - self.center()).normalize();
-        let start = self.center() + dir * self.r;
-        let end = other.center() - dir * other.r;
 
-        let normal = dir.normal();
-        let len = self.dist(other);
-        let p2 = start + dir * len * 0.25 + normal * droopiness;
-        let p3 = start + dir * len * 0.75 + normal * droopiness;
-        Curve::from_points(start, p2, p3, end)
-    }
     pub fn dist(&self, other: Self) -> f32 {
         (self.center() - other.center()).len() - self.r - other.r
     }
@@ -246,5 +236,15 @@ impl Curve {
             p3: self.p2,
             p4: self.p1,
         }
+    }
+
+    pub fn between(droopiness: f32, start: Vec2, end: Vec2) -> Curve {
+        let dir = (end - start).normalize();
+
+        let normal = dir.normal();
+        let len = (end - start).len();
+        let p2 = start + dir * len * 0.25 + normal * droopiness;
+        let p3 = start + dir * len * 0.75 + normal * droopiness;
+        Curve::from_points(start, p2, p3, end)
     }
 }

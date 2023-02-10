@@ -4,5 +4,5 @@
 /outs.txt
 /fonts
 /images
-/graph.json
-/layout.json
+/graphs
+/test.sh

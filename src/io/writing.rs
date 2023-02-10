@@ -6,6 +6,8 @@ use crate::graphs::{
     refs::{EdgeRef, NodeRef},
 };
 
+use super::reading::Label;
+
 pub trait ToJson {
     type Obj;
     fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>>;
@@ -74,6 +76,16 @@ impl<'a> ToJson for ToJsonImpl<&'a i32> {
         Ok(format!("{}", obj))
     }
 }
+impl<'a> ToJson for ToJsonImpl<&'a Label> {
+    type Obj = &'a Label;
+
+    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
+        match obj {
+            Label::Int(i) => Ok(format!("{}", i)),
+            Label::Char(c) => Ok(format!("\"{}\"", c)),
+        }
+    }
+}
 impl<'a> ToJson for ToJsonImpl<&'a char> {
     type Obj = &'a char;
 
@@ -114,7 +126,7 @@ where
                 for bracket in mem.stack().brackets() {
                     s = format!("{s}{}", bracket.index());
                 }
-                Ok(format!("{node},[{s}"))
+                Ok(format!("\"{node},[{s}\""))
             }
             Mangled::Mangled(i) => ToJsonImpl::<&'a usize>::new().to_json(i),
         }
@@ -152,7 +164,7 @@ where
 
     fn to_json(&self, edge: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
         Ok(format!(
-            "\"source\":{},\"target:\"{},\"item\":{}",
+            "{{\"source\":{},\"target\":{},\"item\":{}}}",
             ToJsonImpl::<&'a N>::new().to_json(edge.source().contents())?,
             ToJsonImpl::<&'a N>::new().to_json(edge.target().contents())?,
             ToJsonImpl::<&'a E>::new().to_json(edge.contents())?
@@ -168,7 +180,7 @@ where
 
     fn to_json(&self, edge: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
         Ok(format!(
-            "\"source\":{},\"target:\"{},\"item\":{},\"bracket\":{{\"index\":{},\"is_open\":{}}}",
+            "{{\"source\":{},\"target\":{},\"item\":{},\"bracket\":{{\"index\":{},\"is_open\":{}}}}}",
             ToJsonImpl::<&'a N>::new().to_json(edge.source().contents())?,
             ToJsonImpl::<&'a N>::new().to_json(edge.target().contents())?,
             ToJsonImpl::<Option<&'a E>>::new().to_json(edge.contents().item().as_ref())?,

@@ -42,7 +42,7 @@ where
     let mut font = Vec::new();
     File::open(font_file)?.read_to_end(&mut font)?;
     let font = Font::try_from_vec(font).unwrap();
-    let commands = draw_graph(layout, text_scale, 3, 10, node_drawer, edge_drawer);
+    let commands = draw_graph(layout, text_scale, 10, 10, node_drawer, edge_drawer);
 
     for command in commands {
         match command {
