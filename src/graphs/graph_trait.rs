@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Display};
+use std::collections::HashSet;
 
 use super::refs::{EdgeRef, NodeRef, Path};
 
@@ -122,6 +122,7 @@ where
 {
     graph: &'a G,
     reached: HashSet<NodeRef<'a, N>>,
+    #[allow(clippy::type_complexity)]
     stack: Vec<(Vec<EdgeRef<'a, N, E>>, NodeRef<'a, N>)>,
 }
 

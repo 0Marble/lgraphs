@@ -304,25 +304,11 @@ where
             left_count += 1;
             remaining = next;
         }
-        let mut right_count = 0;
         while let Some(next) = remaining.strip_suffix(right_min) {
-            right_count += 1;
             remaining = next;
         }
         let mid_min = remaining;
         left_count += left.len() / left_min.len();
-        right_count += right.len() / right_min.len();
-
-        // println!(
-        //     "{}\n\t{}*{}\n\t{}\n\t{}*{}\n",
-        //     self.path,
-        //     Path::new(left_min.to_vec()),
-        //     left_count,
-        //     Path::new(mid_min.to_vec()),
-        //     Path::new(right_min.to_vec()),
-        //     right_count
-        // );
-        // debug_assert_eq!(left_count, right_count);
 
         (
             left_count,
@@ -467,12 +453,12 @@ where
         nests
     }
 
-    pub fn core(&self, d: usize) -> Vec<Path<N, Item<E>>>
-    where
-        N: Hash,
-    {
-        todo!()
-    }
+    // pub fn core(&self, d: usize) -> Vec<Path<N, Item<E>>>
+    // where
+    //     N: Hash,
+    // {
+    //     todo!()
+    // }
 
     fn graph_from_paths<'a, B>(
         &'a self,
@@ -724,6 +710,7 @@ where
     G: Graph<N, Item<E>>,
 {
     graph: &'a LGraph<N, E, G>,
+    #[allow(clippy::type_complexity)]
     state: Vec<(Path<'a, N, Item<E>>, NodeRef<'a, N>, BracketStack)>,
     w: usize,
     d: usize,
