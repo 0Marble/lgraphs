@@ -7,7 +7,6 @@ use std::{
 };
 
 use super::{
-    default::DefaultBuilder,
     graph_trait::{Builder, Graph},
     iters::AllPairs,
     refs::{EdgeRef, NodeRef, Path},
@@ -212,10 +211,10 @@ where
 }
 
 #[derive(Debug)]
-struct Nest<'a, 'b, N, E> {
-    left: (usize, usize),
-    right: (usize, usize),
-    path: &'b Path<'a, N, E>,
+pub struct Nest<'a, 'b, N, E> {
+    pub left: (usize, usize),
+    pub right: (usize, usize),
+    pub path: &'b Path<'a, N, E>,
 }
 
 impl<'a, 'b, N, E> Clone for Nest<'a, 'b, N, E> {
@@ -249,6 +248,25 @@ where
     N: Debug,
     E: Debug,
 {
+    pub fn contains(&self, other: &Self) -> bool {
+        if self.path != other.path {
+            return false;
+        }
+
+        let (a11, a21) = self.left;
+        let (a12, a22) = other.left;
+        let (b11, b21) = self.right;
+        let (b12, b22) = other.right;
+
+        // fully inside
+        // left the same, right inside
+        // right the same, left inside
+        let res = (a21 >= a12 && b22 <= b11)
+            || (a11 == a12 && a22 == a21 && b22 <= b11)
+            || (a12 >= a21 && b22 == b21 && b12 == b11);
+        res
+    }
+
     pub fn minimize(&self) -> (usize, Self) {
         let (a1, a2) = self.left;
         let (b1, b2) = self.right;
@@ -360,107 +378,76 @@ where
             .map(|(node, stack)| Memory { node, stack })
     }
 
-    fn core0(&self) -> (Vec<Path<N, Item<E>>>, usize)
+    pub fn depth_set(&self, w: usize, d: usize) -> impl Iterator<Item = Path<'_, N, Item<E>>> + '_
     where
         N: Hash,
     {
-        for d in 0.. {
-            let paths: Vec<_> = StackCore::new(self, 1, d).collect();
-
-            if self.nodes().all(|node| {
-                paths
-                    .iter()
-                    .any(|(path, _, _)| path.nodes().any(|n| n == node))
-            }) {
-                return (
-                    StackCore::new(self, 1, d + 1).map(|(p, _, _)| p).collect(),
-                    d + 1,
-                );
-            }
-        }
-
-        unreachable!()
+        DepthSet::new(self, w, d)
     }
 
-    fn core1(&self, core0_paths: &[Path<N, Item<E>>], d: usize) -> Vec<Path<N, Item<E>>>
+    fn is_in_core_w_checked(&self, path: &Path<N, Item<E>>, d: usize) -> bool
     where
-        N: Hash,
+        N: Display,
+        E: Display,
     {
-        let longest_path_len = core0_paths
-            .iter()
-            .map(|p| p.len())
-            .max()
-            .unwrap_or_default();
-
-        for stack_depth in d.. {
-            dbg!(stack_depth);
-            let core1_paths: Vec<_> = StackCore::new(self, 1, stack_depth).collect();
-
-            if core1_paths
-                .iter()
-                .map(|(p, _, _)| p)
-                .filter_map(|p| {
-                    let nests = self.path_nests(p);
-                    if nests.values().any(|count| *count > longest_path_len) || nests.is_empty() {
-                        None
-                    } else {
-                        Some(nests)
-                    }
-                })
-                .all(|nests| nests.into_values().all(|count| count == longest_path_len))
-            {
-                return core1_paths.into_iter().map(|(p, _, _)| p).collect();
-            }
-
-            // if core1_paths
-            //     .iter()
-            //     .filter(|(_, _, d)| stack_depth == *d)
-            //     .map(|(p, _, _)| p)
-            //     .all(|p| {
-            //         let nests = self.path_nests(p);
-            //         nests.values().all(|count| *count > longest_path_len)
-            //     })
-            // {
-            //     return core1_paths.into_iter().map(|(p, _, _)| p).collect();
-            // }
-        }
-
-        todo!()
-    }
-
-    fn meaningful_nests<'a, 'b>(
-        &'a self,
-        core0_paths: &[Path<'a, N, Item<E>>],
-        core1_paths: &'b [Path<'a, N, Item<E>>],
-    ) -> Vec<Nest<'a, 'b, N, Item<E>>> {
-        let core0 =
-            self.graph_from_paths(core0_paths.iter().cloned(), &mut DefaultBuilder::default());
+        // println!("{}", path.print());
+        let loops: Vec<_> = path.loops().collect();
 
         let mut nests = vec![];
-        for path in core1_paths {
-            let mem: Vec<_> = self.path_to_memories(path).collect();
-            for (nest, _) in self.path_nests(path) {
-                let left_end = &mem[nest.left.1];
-                let right_start = &mem[nest.right.0];
-                if core0.node_with_contents(&left_end.deref()).is_none()
-                    && core0.node_with_contents(&right_start.deref()).is_none()
-                {
-                    nests.push(nest)
-                }
+        for ((a1, a2), (b1, b2)) in
+            AllPairs::new(loops.iter(), loops.iter()).filter(|((_, a2), (b1, _))| a2 < b1)
+        {
+            let full = Path::new(path[*a1..*b2].to_vec());
+            let mid = Path::new(path[*a2..*b1].to_vec());
+
+            if self.path_balance(&full).map_or(false, |s| s.is_empty())
+                && self.path_balance(&mid).map_or(false, |s| s.is_empty())
+            {
+                nests.push(Nest {
+                    left: (*a1, *a2),
+                    right: (*b1, *b2),
+                    path,
+                })
             }
         }
 
-        nests
+        for (_, outer_nest) in nests.iter().enumerate() {
+            let mut depth = 1;
+            for inner_nest in nests.iter() {
+                if outer_nest.contains(inner_nest) {
+                    depth += 1;
+                }
+            }
+            if depth > d {
+                return false;
+            }
+        }
+        true
     }
 
-    // pub fn core(&self, d: usize) -> Vec<Path<N, Item<E>>>
-    // where
-    //     N: Hash,
-    // {
-    //     todo!()
-    // }
+    pub fn core(
+        &self,
+        w: usize,
+        d: usize,
+        d_helper: Option<usize>,
+    ) -> impl Iterator<Item = Path<N, Item<E>>> + '_
+    where
+        N: Hash,
+        E: Display,
+        N: Display,
+    {
+        self.depth_set(
+            w,
+            d_helper.unwrap_or((d + 1) * self.node_count() * self.node_count()),
+        )
+        .filter(move |p| self.is_in_core_w_checked(p, d))
+        .map(|p| {
+            println!("{}", p.print());
+            p
+        })
+    }
 
-    fn graph_from_paths<'a, B>(
+    pub fn graph_from_paths_unchecked<'a, B>(
         &'a self,
         paths: impl Iterator<Item = Path<'a, N, Item<E>>>,
         builder: &mut B,
@@ -499,7 +486,7 @@ where
             })
     }
 
-    fn path_nests<'a, 'b>(
+    pub fn path_nests<'a, 'b>(
         &'a self,
         path: &'b Path<'a, N, Item<E>>,
     ) -> HashMap<Nest<'a, 'b, N, Item<E>>, usize> {
@@ -538,127 +525,14 @@ where
             .collect()
     }
 
-    fn add_nest<'a, 'b, B>(
-        &'a self,
-        nest: Nest<'a, 'b, N, Item<E>>,
-        builder: &mut B,
-        mangled_count: &mut usize,
-    ) where
-        B: Builder<Mangled<Memory<N>, usize>, Item<E>>,
-        N: Hash,
-        N: Debug,
-        E: Debug,
-    {
-        let (_, nest) = nest.minimize();
-
-        let path = nest.path;
-        let (a1, a2) = nest.left;
-        let (b1, b2) = nest.right;
-
-        let mem: Vec<_> = self.path_to_memories(path).collect();
-
-        let mut translation: HashMap<&Memory<NodeRef<N>>, Mangled<Memory<N>, usize>> =
-            HashMap::from([
-                (&mem[a1], Mangled::Node(mem[a2].deref())),
-                (&mem[a2], Mangled::Node(mem[a2].deref())),
-            ]);
-
-        for (i, edge) in path
-            .edges()
-            .enumerate()
-            .filter(|(i, _)| *i >= a1 && *i < a2)
-        {
-            let src = translation
-                .entry(&mem[i])
-                .or_insert_with(|| {
-                    *mangled_count += 1;
-                    Mangled::Mangled(*mangled_count - 1)
-                })
-                .clone();
-            let dst = translation
-                .entry(&mem[i + 1])
-                .or_insert_with(|| {
-                    *mangled_count += 1;
-                    Mangled::Mangled(*mangled_count - 1)
-                })
-                .clone();
-            builder.add_edge(src, edge.contents().clone(), dst);
-        }
-
-        let mut translation: HashMap<&Memory<NodeRef<N>>, Mangled<Memory<N>, usize>> =
-            HashMap::from([
-                (&mem[b1], Mangled::Node(mem[b1].deref())),
-                (&mem[b2], Mangled::Node(mem[b1].deref())),
-            ]);
-
-        for (i, edge) in path
-            .edges()
-            .enumerate()
-            .filter(|(i, _)| *i >= b1 && *i < b2)
-        {
-            let src = translation
-                .entry(&mem[i])
-                .or_insert_with(|| {
-                    *mangled_count += 1;
-                    Mangled::Mangled(*mangled_count - 1)
-                })
-                .clone();
-            let dst = translation
-                .entry(&mem[i + 1])
-                .or_insert_with(|| {
-                    *mangled_count += 1;
-                    Mangled::Mangled(*mangled_count - 1)
-                })
-                .clone();
-            builder.add_edge(src, edge.contents().clone(), dst);
-        }
-    }
-
-    pub fn normal_form<B>(
-        &self,
-        builder: &mut B,
-    ) -> LGraph<Mangled<Memory<N>, usize>, E, B::TargetGraph>
+    pub fn normal_form<B>(&self, _: &mut B) -> LGraph<Mangled<Memory<N>, usize>, E, B::TargetGraph>
     where
         B: Builder<Mangled<Memory<N>, usize>, Item<E>>,
         N: Hash,
         N: Display + Debug,
         E: Display + Debug,
     {
-        let (core0_paths, d) = self.core0();
-        let core1_paths = self.core1(&core0_paths, d);
-        let nests = self.meaningful_nests(&core0_paths, &core1_paths);
-
-        let core1 = self.graph_from_paths(
-            core1_paths.clone().into_iter(),
-            &mut DefaultBuilder::default(),
-        );
-
-        builder.clear();
-        for edge in core1.edges() {
-            builder.add_edge(
-                Mangled::Node(edge.source().contents().clone()),
-                edge.contents().clone(),
-                Mangled::Node(edge.target().contents().clone()),
-            );
-        }
-        for node in core1.nodes() {
-            builder.add_node(Mangled::Node(node.contents().clone()));
-        }
-
-        let mut mangled_count = 0;
-        for nest in nests {
-            self.add_nest(nest, builder, &mut mangled_count);
-        }
-
-        LGraph::new_unchecked(
-            builder.build(
-                Mangled::Node(core1.start_node().contents().clone()),
-                core1
-                    .end_nodes()
-                    .map(|n| n.contents().clone())
-                    .map(Mangled::Node),
-            ),
-        )
+        todo!()
     }
 
     pub fn regular_image<B>(&self, builder: &mut B) -> StateMachine<N, Option<E>, B::TargetGraph>
@@ -705,18 +579,23 @@ where
     }
 }
 
-pub struct StackCore<'a, N, E, G>
+pub struct DepthSet<'a, N, E, G>
 where
     G: Graph<N, Item<E>>,
 {
     graph: &'a LGraph<N, E, G>,
     #[allow(clippy::type_complexity)]
-    state: Vec<(Path<'a, N, Item<E>>, NodeRef<'a, N>, BracketStack)>,
+    state: Vec<(
+        Path<'a, N, Item<E>>,
+        NodeRef<'a, N>,
+        BracketStack,
+        HashMap<Memory<NodeRef<'a, N>>, usize>,
+    )>,
     w: usize,
     d: usize,
 }
 
-impl<'a, N, E, G> StackCore<'a, N, E, G>
+impl<'a, N, E, G> DepthSet<'a, N, E, G>
 where
     G: Graph<N, Item<E>>,
     N: Debug,
@@ -724,93 +603,62 @@ where
 {
     pub fn new(graph: &'a LGraph<N, E, G>, w: usize, d: usize) -> Self {
         Self {
-            state: vec![(Path::default(), graph.start_node(), BracketStack::default())],
+            state: vec![(
+                Path::default(),
+                graph.start_node(),
+                BracketStack::default(),
+                HashMap::new(),
+            )],
             graph,
             w,
             d,
         }
     }
-
-    fn is_in_core(&self, path: &Path<'a, N, Item<E>>, w: usize, d: usize) -> bool
-    where
-        N: Hash + Eq + Clone,
-        E: Eq + Clone,
-    {
-        let mut visited: HashMap<_, usize> = HashMap::new();
-
-        for mem in self.graph.path_to_memories(path) {
-            if mem.stack.len() > d {
-                return false;
-            }
-
-            let count = visited
-                .entry(mem)
-                .and_modify(|count| *count += 1)
-                .or_default();
-            if *count > w {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    fn get_wd(&self, path: &Path<'a, N, Item<E>>) -> (usize, usize)
-    where
-        N: Hash + Eq + Clone,
-        E: Eq + Clone,
-    {
-        let mut visited: HashMap<_, usize> = HashMap::new();
-
-        let mut max_d = 0;
-        let mut max_w = 0;
-        for mem in self.graph.path_to_memories(path) {
-            if mem.stack.len() > max_d {
-                max_d = mem.stack.len();
-            }
-
-            let count = visited
-                .entry(mem)
-                .and_modify(|count| *count += 1)
-                .or_default();
-            if *count > max_w {
-                max_w = *count;
-            }
-        }
-
-        (max_w, max_d)
-    }
 }
 
-impl<'a, N, E, G> Iterator for StackCore<'a, N, E, G>
+impl<'a, N, E, G> Iterator for DepthSet<'a, N, E, G>
 where
     G: Graph<N, Item<E>>,
     N: Eq + Clone + Hash + Debug,
     E: Eq + Clone + Debug,
 {
-    type Item = (Path<'a, N, Item<E>>, usize, usize);
+    type Item = Path<'a, N, Item<E>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some((path, node, brackets)) = self.state.pop() {
+        while let Some((path, node, brackets, visit_stats)) = self.state.pop() {
             let mut res = None;
 
             if self.graph.is_end_node(node) && brackets.is_empty() && !path.is_empty() {
                 res = Some(path.clone());
             }
 
-            for edge in self.graph.edges_from(node) {
+            'next_search: for edge in self.graph.edges_from(node) {
                 if let Some(new_brackets) = brackets.accept_clone(edge.contents().bracket()) {
+                    if new_brackets.len() > self.d {
+                        continue 'next_search;
+                    }
+                    let mut new_visit_stats = visit_stats.clone();
+                    let mem = Memory {
+                        node: edge.target(),
+                        stack: new_brackets.clone(),
+                    };
+                    let count = new_visit_stats
+                        .entry(mem)
+                        .and_modify(|count| *count += 1)
+                        .or_default();
+                    if *count > self.w {
+                        continue 'next_search;
+                    }
+
                     let new_path = path.clone().push(edge);
 
-                    if self.is_in_core(&new_path, self.w, self.d) {
-                        self.state.push((new_path, edge.target(), new_brackets))
-                    }
+                    self.state
+                        .push((new_path, edge.target(), new_brackets, new_visit_stats))
                 }
             }
 
             if let Some(res) = res {
-                let (w, d) = self.get_wd(&res);
-                return Some((res, w, d));
+                return Some(res);
             }
         }
 

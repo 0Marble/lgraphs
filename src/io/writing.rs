@@ -132,6 +132,50 @@ where
         }
     }
 }
+impl<'a> ToJson for ToJsonImpl<&'a Mangled<Memory<Label>, usize>>
+where
+    ToJsonImpl<&'a Label>: ToJson<Obj = &'a Label>,
+{
+    type Obj = &'a Mangled<Memory<Label>, usize>;
+
+    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
+        match obj {
+            Mangled::Node(mem) => {
+                let node = ToJsonImpl::<&'a Label>::new().to_json(mem.node())?;
+                if mem.stack().is_empty() {
+                    return Ok(node);
+                }
+
+                let mut s = String::new();
+                for bracket in mem.stack().brackets() {
+                    s = format!("{s}{}", bracket.index());
+                }
+                Ok(format!("\"{node},[{s}\""))
+            }
+            Mangled::Mangled(i) => ToJsonImpl::<&'a usize>::new().to_json(i),
+        }
+    }
+}
+impl<'a> ToJson for ToJsonImpl<&'a Memory<Label>>
+where
+    ToJsonImpl<&'a Label>: ToJson<Obj = &'a Label>,
+{
+    type Obj = &'a Memory<Label>;
+
+    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
+        let node = ToJsonImpl::<&'a Label>::new().to_json(obj.node())?;
+        if obj.stack().is_empty() {
+            return Ok(node);
+        }
+
+        let mut s = String::new();
+        for bracket in obj.stack().brackets() {
+            s = format!("{s}{}", bracket.index());
+        }
+        Ok(format!("\"{node},[{s}\""))
+    }
+}
+
 impl<'a, T> ToJson for ToJsonImpl<Option<&'a T>>
 where
     ToJsonImpl<&'a T>: ToJson<Obj = &'a T>,

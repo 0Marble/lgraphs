@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
-members = [ "draw_graph", "regularize" ]
+members = [ "draw_graph", "regularize", "sandbox" ]
 
 [dependencies]
 json = "0.12.4"

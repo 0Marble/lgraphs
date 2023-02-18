@@ -317,4 +317,31 @@ impl<'a, N, E> Path<'a, N, E> {
                 .map(move |(j, _)| (i, j))
         })
     }
+
+    pub fn print(&self) -> String
+    where
+        N: Display,
+        E: Display,
+    {
+        use std::fmt::Write;
+        let mut s = String::new();
+        if self.edges.is_empty() {
+            return s;
+        }
+
+        write!(
+            s,
+            "{} - {}",
+            self.edges[0].source().contents(),
+            self.edges[0].contents()
+        )
+        .unwrap();
+
+        for edge in self.edges().skip(1) {
+            write!(s, " -> {} - {}", edge.source().contents(), edge.contents()).unwrap();
+        }
+
+        write!(s, "-> {}", self.edges.last().unwrap().target().contents()).unwrap();
+        s
+    }
 }
