@@ -6,7 +6,7 @@ use crate::{
         lgraph::{Bracket, BracketStack, Item},
         refs::{EdgeRef, NodeRef},
     },
-    io::reading::Label,
+    io::{Item as IoItem, Label},
 };
 
 use super::{
@@ -68,10 +68,7 @@ impl<'a> LabelDrawer for LabelDrawerImpl<&'a i32> {
 impl<'a> LabelDrawer for LabelDrawerImpl<&'a Label> {
     type Obj = &'a Label;
     fn draw(&self, obj: &'a Label) -> String {
-        match obj {
-            Label::Int(i) => i.to_string(),
-            Label::Char(c) => format!("{}", c),
-        }
+        obj.contents().to_string()
     }
 }
 impl<'a> LabelDrawer for LabelDrawerImpl<&'a usize> {
@@ -123,6 +120,24 @@ where
         format!(
             "{item},{}",
             LabelDrawerImpl::<&'a Bracket>::new().draw(&obj.bracket())
+        )
+    }
+}
+
+impl<'a> LabelDrawer for LabelDrawerImpl<&'a IoItem> {
+    type Obj = &'a IoItem;
+
+    fn draw(&self, obj: Self::Obj) -> String {
+        let item = match obj.item() {
+            Some(item) => LabelDrawerImpl::<&'a Label>::new().draw(item),
+            None => "_".to_string(),
+        };
+        format!(
+            "{item},{}",
+            obj.bracket().map_or_else(
+                || String::new(),
+                |b| LabelDrawerImpl::<&'a Bracket>::new().draw(b)
+            )
         )
     }
 }

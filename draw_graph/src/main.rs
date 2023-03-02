@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, io::Read};
+use std::{collections::HashMap, fmt::Display, fs::File, io::Read};
 
 use imageproc::{
     drawing::{
@@ -8,16 +8,34 @@ use imageproc::{
 };
 use json::JsonValue;
 use lgraphs::{
-    drawing::{
+    graphs::{default::DefaultBuilder, graph_trait::Graph},
+    io::drawing::{
         drawer::{draw_graph, DrawCommand, LabelDrawer, LabelDrawerImpl},
         layout::{Layout, ManualGridLayout, MinGridLayout},
     },
-    graphs::{default::DefaultBuilder, graph_trait::Graph, lgraph::Item},
-    io::reading::{read_graph, read_label, read_lgraph, Label, ParseError},
+    io::{reading::read, Item as IoItem, Label},
 };
 
 use image::{Rgb, RgbImage};
 use rusttype::{Font, Scale};
+
+#[derive(Debug, Clone)]
+enum Error {
+    ExpectedLabel,
+    ExpectedXCoord,
+    ExpectedYCoord,
+    LocationsNotGiven,
+    LocationMalformed,
+    NoSuchNode,
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for Error {}
 
 fn render_graph<'a, N, E, G, L>(
     layout: &L,
@@ -60,15 +78,7 @@ where
             ),
             DrawCommand::Text { bounds, text } => draw_text_mut(
                 &mut image,
-                if text.starts_with('a') {
-                    Rgb([255, 0, 0])
-                } else if text.starts_with('b') {
-                    Rgb([0, 255, 0])
-                } else if text.starts_with('c') {
-                    Rgb([0, 0, 255])
-                } else {
-                    Rgb([0, 0, 0])
-                },
+                Rgb([0, 0, 0]),
                 bounds.x1 as i32,
                 bounds.y1 as i32,
                 Scale::uniform(text_scale),
@@ -98,18 +108,16 @@ fn read_location(
     let loc = match val {
         JsonValue::Array(a) => (
             a.get(0)
-                .map(|l| read_label(l, val.to_string().as_str()))
-                .ok_or_else(|| {
-                    ParseError::ExpectedLabel(format!("location {}, index 0", index))
-                })??,
-            a.get(1).and_then(|v| v.as_usize()).ok_or_else(|| {
-                ParseError::ExpectedNumber(format!("location {}, index 1", index))
-            })?,
-            a.get(2).and_then(|v| v.as_usize()).ok_or_else(|| {
-                ParseError::ExpectedNumber(format!("location {}, index 2", index))
-            })?,
+                .map(|l| Label::read(l))
+                .ok_or(Error::ExpectedLabel)??,
+            a.get(1)
+                .and_then(|v| v.as_usize())
+                .ok_or(Error::ExpectedXCoord)?,
+            a.get(2)
+                .and_then(|v| v.as_usize())
+                .ok_or(Error::ExpectedYCoord)?,
         ),
-        _ => Err(ParseError::ExpectedLocation(index))?,
+        _ => Err(Error::LocationMalformed)?,
     };
 
     Ok(loc)
@@ -129,14 +137,12 @@ where
             .enumerate()
             .map(|(i, val)| read_location(val, i))
             .collect::<Result<Vec<_>, _>>()?,
-        _ => Err(ParseError::ExpectedArrayOfLocations)?,
+        _ => Err(Error::LocationsNotGiven)?,
     };
 
     let mut node_locations = HashMap::new();
     for (node, x, y) in locations {
-        let node = graph
-            .node_with_contents(&node)
-            .ok_or_else(|| ParseError::NoSuchNode(node.to_string()))?;
+        let node = graph.node_with_contents(&node).ok_or(Error::NoSuchNode)?;
         node_locations.insert(node, (x, y));
     }
 
@@ -162,7 +168,6 @@ fn main() {
         .iter()
         .find_map(|arg| arg.strip_prefix("layout="))
         .unwrap_or("auto");
-    let is_lgraph = args.iter().any(|arg| arg.as_str().eq("--lgraph"));
     let manual_locations_file = args
         .iter()
         .find_map(|arg| arg.strip_prefix("locations="))
@@ -182,85 +187,44 @@ fn main() {
             .read_to_string(&mut src)
             .unwrap_or_else(|e| panic!("Could not read from file {}: {}", input, e));
     }
-
-    if is_lgraph {
-        let g = read_lgraph(&src, &mut DefaultBuilder::default())
-            .unwrap_or_else(|e| panic!("Could not parse lgraph: {}", e));
-        let layout: Box<dyn Layout<_, _, _>> = match layout {
-            "auto" => Box::new(MinGridLayout::new(50.0, 60.0, &g)),
-            "manual" => {
-                let mut locations = String::new();
-                if manual_locations_file == "-" {
-                    println!("Reading node locations from stdin, press Control+D to finish input");
-                    std::io::stdin()
-                        .read_to_string(&mut locations)
-                        .expect("Could not read source");
-                    println!("Locations successfully read");
-                } else {
-                    File::open(manual_locations_file)
-                        .unwrap_or_else(|e| {
-                            panic!("Could not open file {}: {}", manual_locations_file, e)
-                        })
-                        .read_to_string(&mut locations)
-                        .unwrap_or_else(|e| {
-                            panic!("Could not read from file {}: {}", manual_locations_file, e)
-                        });
-                }
-                Box::new(
-                    manual_layout(locations.as_str(), &g)
-                        .unwrap_or_else(|e| panic!("Could not parse node locations: {}", e)),
-                )
+    let g = read(&src, &mut DefaultBuilder::default())
+        .unwrap_or_else(|e| panic!("Could not parse lgraph: {}", e));
+    let layout: Box<dyn Layout<_, _, _>> = match layout {
+        "auto" => Box::new(MinGridLayout::new(50.0, 60.0, &g)),
+        "manual" => {
+            let mut locations = String::new();
+            if manual_locations_file == "-" {
+                println!("Reading node locations from stdin, press Control+D to finish input");
+                std::io::stdin()
+                    .read_to_string(&mut locations)
+                    .expect("Could not read source");
+                println!("Locations successfully read");
+            } else {
+                File::open(manual_locations_file)
+                    .unwrap_or_else(|e| {
+                        panic!("Could not open file {}: {}", manual_locations_file, e)
+                    })
+                    .read_to_string(&mut locations)
+                    .unwrap_or_else(|e| {
+                        panic!("Could not read from file {}: {}", manual_locations_file, e)
+                    });
             }
-            other => panic!("Unknown layout {}", other),
-        };
+            Box::new(
+                manual_layout(locations.as_str(), &g)
+                    .unwrap_or_else(|e| panic!("Could not parse node locations: {}", e)),
+            )
+        }
+        other => panic!("Unknown layout {}", other),
+    };
 
-        render_graph(
-            &layout,
-            output,
-            &LabelDrawerImpl::<&Label>::new(),
-            &LabelDrawerImpl::<&Item<Label>>::new(),
-            font,
-        )
-        .unwrap_or_else(|e| panic!("Could not render a graph to {}: {}", output, e));
-    } else {
-        let g = read_graph(&src, &mut DefaultBuilder::default())
-            .unwrap_or_else(|e| panic!("Could not parse graph: {}", e));
-        let layout: Box<dyn Layout<_, _, _>> = match layout {
-            "auto" => Box::new(MinGridLayout::new(50.0, 60.0, &g)),
-            "manual" => {
-                let mut locations = String::new();
-                if manual_locations_file == "-" {
-                    println!("Reading node locations from stdin, press Control+D to finish input");
-                    std::io::stdin()
-                        .read_to_string(&mut locations)
-                        .expect("Could not read source");
-                    println!("Locations successfully read");
-                } else {
-                    File::open(manual_locations_file)
-                        .unwrap_or_else(|e| {
-                            panic!("Could not open file {}: {}", manual_locations_file, e)
-                        })
-                        .read_to_string(&mut locations)
-                        .unwrap_or_else(|e| {
-                            panic!("Could not read from file {}: {}", manual_locations_file, e)
-                        });
-                }
-                Box::new(
-                    manual_layout(locations.as_str(), &g)
-                        .unwrap_or_else(|e| panic!("Could not parse node locations: {}", e)),
-                )
-            }
-            other => panic!("Unknown layout {}", other),
-        };
-        render_graph(
-            &layout,
-            output,
-            &LabelDrawerImpl::<&Label>::new(),
-            &LabelDrawerImpl::<&Option<Label>>::new(),
-            font,
-        )
-        .unwrap_or_else(|e| panic!("Could not render a graph to {}: {}", output, e));
-    }
+    render_graph(
+        &layout,
+        output,
+        &LabelDrawerImpl::<&Label>::new(),
+        &LabelDrawerImpl::<&IoItem>::new(),
+        font,
+    )
+    .unwrap_or_else(|e| panic!("Could not render a graph to {}: {}", output, e));
 
     println!(
         "Successfully drawn to {}/{}",

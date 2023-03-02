@@ -13,25 +13,19 @@ use super::{
     state_machine::StateMachine,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BracketType {
-    Open,
-    Close,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Bracket {
     index: usize,
-    open: BracketType,
+    is_open: bool,
 }
 
 impl Bracket {
-    pub fn new(index: usize, open: BracketType) -> Self {
-        Self { index, open }
+    pub fn new(index: usize, is_open: bool) -> Self {
+        Self { index, is_open }
     }
 
     pub fn is_open(&self) -> bool {
-        matches!(self.open, BracketType::Open)
+        self.is_open
     }
 
     pub fn index(&self) -> usize {
@@ -46,10 +40,7 @@ pub struct BracketStack {
 
 impl BracketStack {
     pub fn brackets(&self) -> impl Iterator<Item = Bracket> + '_ {
-        self.stack.iter().cloned().map(|i| Bracket {
-            index: i,
-            open: BracketType::Open,
-        })
+        self.stack.iter().cloned().map(|i| Bracket::new(i, true))
     }
 
     pub fn can_accept(&self, bracket: Bracket) -> bool {
@@ -120,9 +111,9 @@ where
             Some(item) => write!(f, "{}", item),
             None => write!(f, "_"),
         }?;
-        match self.bracket.open {
-            BracketType::Open => write!(f, "[{}", self.bracket.index),
-            BracketType::Close => write!(f, "]{}", self.bracket.index),
+        match self.bracket.is_open() {
+            true => write!(f, "[{}", self.bracket.index),
+            false => write!(f, "]{}", self.bracket.index),
         }
     }
 }
@@ -152,6 +143,12 @@ impl<E> Item<E> {
 pub struct Memory<N> {
     node: N,
     stack: BracketStack,
+}
+
+impl<N> Memory<N> {
+    pub fn new(node: N, stack: BracketStack) -> Self {
+        Self { node, stack }
+    }
 }
 
 impl<'a, N> Memory<&'a N> {
@@ -261,10 +258,10 @@ where
         // fully inside
         // left the same, right inside
         // right the same, left inside
-        let res = (a21 >= a12 && b22 <= b11)
+
+        (a21 >= a12 && b22 <= b11)
             || (a11 == a12 && a22 == a21 && b22 <= b11)
-            || (a12 >= a21 && b22 == b21 && b12 == b11);
-        res
+            || (a12 >= a21 && b22 == b21 && b12 == b11)
     }
 
     pub fn minimize(&self) -> (usize, Self) {
@@ -385,12 +382,7 @@ where
         DepthSet::new(self, w, d)
     }
 
-    fn is_in_core_w_checked(&self, path: &Path<N, Item<E>>, d: usize) -> bool
-    where
-        N: Display,
-        E: Display,
-    {
-        // println!("{}", path.print());
+    pub fn is_in_core_w_checked(&self, path: &Path<N, Item<E>>, d: usize) -> bool {
         let loops: Vec<_> = path.loops().collect();
 
         let mut nests = vec![];
@@ -479,7 +471,7 @@ where
         ))
     }
 
-    fn path_balance<'a>(&'a self, path: &Path<'a, N, Item<E>>) -> Option<BracketStack> {
+    pub fn path_balance<'a>(&'a self, path: &Path<'a, N, Item<E>>) -> Option<BracketStack> {
         path.edges()
             .fold(Some(BracketStack::default()), |stack, e| {
                 stack.and_then(|s| s.accept_clone(e.contents().bracket()))
@@ -529,8 +521,8 @@ where
     where
         B: Builder<Mangled<Memory<N>, usize>, Item<E>>,
         N: Hash,
-        N: Display + Debug,
-        E: Display + Debug,
+        N: Debug,
+        E: Debug,
     {
         todo!()
     }

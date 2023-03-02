@@ -1,235 +1,127 @@
-use std::marker::PhantomData;
-
 use crate::graphs::{
     graph_trait::Graph,
     lgraph::{Item, Mangled, Memory},
-    refs::{EdgeRef, NodeRef},
+    refs::EdgeRef,
 };
 
-use super::reading::Label;
+use super::{Item as JsonItem, Label};
 
 pub trait ToJson {
-    type Obj;
-    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>>;
+    fn to_json(&self) -> String;
 }
 
-pub fn as_json<'a, N: 'a, E: 'a>(
-    graph: &'a impl Graph<N, E>,
-) -> Result<String, Box<dyn std::error::Error>>
+impl ToJson for Label {
+    fn to_json(&self) -> String {
+        format!("\"{}\"", self.contents())
+    }
+}
+
+impl ToJson for JsonItem {
+    fn to_json(&self) -> String {
+        let mut s = "\"item\":{".to_string();
+        if let Some(item) = self.item() {
+            s.push_str(&format!("\"item\":{}", item.to_json()));
+        }
+        if let Some(bracket) = self.bracket() {
+            s.push_str(&format!(
+                "\"bracket\":{{\"index\":{},\"is_open\":{}}}",
+                bracket.index(),
+                bracket.is_open()
+            ));
+        }
+
+        s.push('}');
+        s
+    }
+}
+
+impl ToJson for i32 {
+    fn to_json(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl ToJson for usize {
+    fn to_json(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl ToJson for char {
+    fn to_json(&self) -> String {
+        format!("\"{}\"", self)
+    }
+}
+
+impl<E> ToJson for Item<E>
 where
-    ToJsonImpl<NodeRef<'a, N>>: ToJson<Obj = NodeRef<'a, N>>,
-    ToJsonImpl<EdgeRef<'a, N, E>>: ToJson<Obj = EdgeRef<'a, N, E>>,
+    E: ToString,
 {
-    use std::fmt::Write;
-    let node_writer = ToJsonImpl::<NodeRef<'a, N>>::new();
-    let edge_writer = ToJsonImpl::<EdgeRef<'a, N, E>>::new();
+    fn to_json(&self) -> String {
+        let bracket = self.bracket();
+        JsonItem::new(
+            self.item().as_ref().map(|i| Label::new(i.to_string())),
+            Some(bracket),
+        )
+        .to_json()
+    }
+}
 
-    let mut s = String::new();
-    let start_node = node_writer.to_json(graph.start_node())?;
-
-    let mut end_nodes = String::new();
-    if let Some(first) = graph.end_nodes().next() {
-        write!(end_nodes, "{}", node_writer.to_json(first)?)?;
-
-        for node in graph.end_nodes().skip(1) {
-            write!(end_nodes, ",{}", node_writer.to_json(node)?)?;
+impl<N: ToString> ToJson for Memory<N> {
+    fn to_json(&self) -> String {
+        let mut s = "\"".to_string();
+        s.push_str(&self.node().to_string());
+        s.push(',');
+        for bracket in self.stack().brackets() {
+            s.push_str(&bracket.index().to_string());
         }
-    }
 
-    let mut edges = String::new();
-    if let Some(first) = graph.edges().next() {
-        write!(edges, "{}", edge_writer.to_json(first)?)?;
-
-        for edge in graph.edges().skip(1) {
-            write!(edges, ",{}", edge_writer.to_json(edge)?)?;
-        }
-    }
-
-    write!(
-        s,
-        "{{\"start_node\":{},\"end_nodes\":[{}],\"edges\":[{}]}}",
-        start_node, end_nodes, edges
-    )?;
-
-    Ok(s)
-}
-
-pub struct ToJsonImpl<T> {
-    _p: PhantomData<*const T>,
-}
-
-impl<T> ToJsonImpl<T> {
-    pub fn new() -> Self {
-        Self { _p: PhantomData }
+        s.push('\"');
+        s
     }
 }
 
-impl<T> Default for ToJsonImpl<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl<'a> ToJson for ToJsonImpl<&'a i32> {
-    type Obj = &'a i32;
-
-    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
-        Ok(format!("{}", obj))
-    }
-}
-impl<'a> ToJson for ToJsonImpl<&'a Label> {
-    type Obj = &'a Label;
-
-    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
-        match obj {
-            Label::Int(i) => Ok(format!("{}", i)),
-            Label::Char(c) => Ok(format!("\"{}\"", c)),
-        }
-    }
-}
-impl<'a> ToJson for ToJsonImpl<&'a char> {
-    type Obj = &'a char;
-
-    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
-        Ok(format!("\"{}\"", obj))
-    }
-}
-impl<'a> ToJson for ToJsonImpl<&'a usize> {
-    type Obj = &'a usize;
-
-    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
-        Ok(format!("{}", obj))
-    }
-}
-impl ToJson for ToJsonImpl<bool> {
-    type Obj = bool;
-
-    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
-        Ok(format!("{}", obj))
-    }
-}
-
-impl<'a> ToJson for ToJsonImpl<&'a Mangled<Memory<i32>, usize>>
-where
-    ToJsonImpl<&'a i32>: ToJson<Obj = &'a i32>,
-{
-    type Obj = &'a Mangled<Memory<i32>, usize>;
-
-    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
-        match obj {
-            Mangled::Node(mem) => {
-                let node = ToJsonImpl::<&'a i32>::new().to_json(mem.node())?;
-                if mem.stack().is_empty() {
-                    return Ok(node);
-                }
-
-                let mut s = String::new();
-                for bracket in mem.stack().brackets() {
-                    s = format!("{s}{}", bracket.index());
-                }
-                Ok(format!("\"{node},[{s}\""))
-            }
-            Mangled::Mangled(i) => ToJsonImpl::<&'a usize>::new().to_json(i),
+impl<N: ToString> ToJson for Mangled<N, usize> {
+    fn to_json(&self) -> String {
+        match self {
+            Mangled::Node(n) => format!("\"{}\"", n.to_string()),
+            Mangled::Mangled(i) => format!("\"mangled{i}\""),
         }
     }
 }
-impl<'a> ToJson for ToJsonImpl<&'a Mangled<Memory<Label>, usize>>
-where
-    ToJsonImpl<&'a Label>: ToJson<Obj = &'a Label>,
-{
-    type Obj = &'a Mangled<Memory<Label>, usize>;
 
-    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
-        match obj {
-            Mangled::Node(mem) => {
-                let node = ToJsonImpl::<&'a Label>::new().to_json(mem.node())?;
-                if mem.stack().is_empty() {
-                    return Ok(node);
-                }
-
-                let mut s = String::new();
-                for bracket in mem.stack().brackets() {
-                    s = format!("{s}{}", bracket.index());
-                }
-                Ok(format!("\"{node},[{s}\""))
-            }
-            Mangled::Mangled(i) => ToJsonImpl::<&'a usize>::new().to_json(i),
-        }
-    }
-}
-impl<'a> ToJson for ToJsonImpl<&'a Memory<Label>>
-where
-    ToJsonImpl<&'a Label>: ToJson<Obj = &'a Label>,
-{
-    type Obj = &'a Memory<Label>;
-
-    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
-        let node = ToJsonImpl::<&'a Label>::new().to_json(obj.node())?;
-        if obj.stack().is_empty() {
-            return Ok(node);
-        }
-
-        let mut s = String::new();
-        for bracket in obj.stack().brackets() {
-            s = format!("{s}{}", bracket.index());
-        }
-        Ok(format!("\"{node},[{s}\""))
-    }
+fn write_edge<N: ToJson, E: ToJson>(edge: &EdgeRef<N, E>) -> String {
+    format!(
+        "{{\"source\":{},\"target\":{},{}}}",
+        edge.source().contents().to_json(),
+        edge.target().contents().to_json(),
+        edge.contents().to_json()
+    )
 }
 
-impl<'a, T> ToJson for ToJsonImpl<Option<&'a T>>
-where
-    ToJsonImpl<&'a T>: ToJson<Obj = &'a T>,
-{
-    type Obj = Option<&'a T>;
+pub fn write<N: ToJson, E: ToJson>(g: &impl Graph<N, E>) -> String {
+    let mut s = "{".to_string();
 
-    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
-        match obj {
-            Some(obj) => ToJsonImpl::<&'a T>::new().to_json(obj),
-            None => Ok("null".to_string()),
-        }
-    }
-}
-impl<'a, N> ToJson for ToJsonImpl<NodeRef<'a, N>>
-where
-    ToJsonImpl<&'a N>: ToJson<Obj = &'a N>,
-{
-    type Obj = NodeRef<'a, N>;
+    s.push_str(&format!(
+        "\"start_node\":{},",
+        g.start_node().contents().to_json()
+    ));
 
-    fn to_json(&self, obj: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
-        ToJsonImpl::<&'a N>::new().to_json(obj.contents())
+    let end_nodes: Vec<_> = g.end_nodes().collect();
+    s.push_str("\"end_nodes\":[");
+    s.push_str(&end_nodes[0].contents().to_json());
+    for node in &end_nodes[1..] {
+        s.push_str(&format!(",{}", node.contents().to_json()));
     }
-}
-impl<'a, N, E> ToJson for ToJsonImpl<EdgeRef<'a, N, E>>
-where
-    ToJsonImpl<&'a N>: ToJson<Obj = &'a N>,
-    ToJsonImpl<&'a E>: ToJson<Obj = &'a E>,
-{
-    type Obj = EdgeRef<'a, N, E>;
+    s.push_str("],");
 
-    fn to_json(&self, edge: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
-        Ok(format!(
-            "{{\"source\":{},\"target\":{},\"item\":{}}}",
-            ToJsonImpl::<&'a N>::new().to_json(edge.source().contents())?,
-            ToJsonImpl::<&'a N>::new().to_json(edge.target().contents())?,
-            ToJsonImpl::<&'a E>::new().to_json(edge.contents())?
-        ))
+    let edges: Vec<_> = g.edges().collect();
+    s.push_str("\"edges\":[");
+    s.push_str(&write_edge(&edges[0]));
+    for edge in &edges[1..] {
+        s.push_str(&format!(",{}", write_edge(edge)));
     }
-}
-impl<'a, N, E> ToJson for ToJsonImpl<EdgeRef<'a, N, Item<E>>>
-where
-    ToJsonImpl<&'a N>: ToJson<Obj = &'a N>,
-    ToJsonImpl<&'a E>: ToJson<Obj = &'a E>,
-{
-    type Obj = EdgeRef<'a, N, Item<E>>;
 
-    fn to_json(&self, edge: Self::Obj) -> Result<String, Box<dyn std::error::Error>> {
-        Ok(format!(
-            "{{\"source\":{},\"target\":{},\"item\":{},\"bracket\":{{\"index\":{},\"is_open\":{}}}}}",
-            ToJsonImpl::<&'a N>::new().to_json(edge.source().contents())?,
-            ToJsonImpl::<&'a N>::new().to_json(edge.target().contents())?,
-            ToJsonImpl::<Option<&'a E>>::new().to_json(edge.contents().item().as_ref())?,
-            ToJsonImpl::<&usize>::new().to_json(&edge.contents().bracket().index())?,
-            ToJsonImpl::<bool>::new().to_json(edge.contents().bracket().is_open())?,
-        ))
-    }
+    s.push_str("]}\n");
+    s
 }

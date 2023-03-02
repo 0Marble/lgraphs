@@ -344,4 +344,8 @@ impl<'a, N, E> Path<'a, N, E> {
         write!(s, "-> {}", self.edges.last().unwrap().target().contents()).unwrap();
         s
     }
+
+    pub fn has_prefix(&self, path: &Self) -> bool {
+        self.edges.strip_prefix(path.edges.as_slice()).is_some()
+    }
 }

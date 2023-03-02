@@ -1,4 +1,4 @@
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, iter::once, marker::PhantomData};
 
 use crate::graphs::{
     graph_trait::Graph,
@@ -15,7 +15,6 @@ pub trait Layout<'a, N, E, G> {
     fn spacing(&self) -> f32;
 
     fn start(&self) -> Vec2;
-    fn end(&self) -> Vec2;
 }
 
 impl<'a, L, N, E, G> Layout<'a, N, E, G> for Box<L>
@@ -44,10 +43,6 @@ where
 
     fn start(&self) -> Vec2 {
         self.as_ref().start()
-    }
-
-    fn end(&self) -> Vec2 {
-        self.as_ref().end()
     }
 }
 
@@ -96,10 +91,6 @@ where
 
     fn start(&self) -> Vec2 {
         Vec2::new(0.0, self.height * 0.5)
-    }
-
-    fn end(&self) -> Vec2 {
-        Vec2::new(self.width, self.height * 0.5)
     }
 }
 
@@ -219,8 +210,113 @@ where
     fn start(&self) -> Vec2 {
         self.inner.start()
     }
+}
 
-    fn end(&self) -> Vec2 {
-        self.inner.end()
+pub struct MinIntersectionLayout<'a, N, E, G>
+where
+    G: Graph<N, E>,
+{
+    inner: ManualGridLayout<'a, N, E, G>,
+}
+
+impl<'a, N, E, G> MinIntersectionLayout<'a, N, E, G>
+where
+    G: Graph<N, E>,
+    E: 'a,
+    N: 'a,
+{
+    pub fn new(node_radius: f32, spacing: f32, graph: &'a G, max_step_count: usize) -> Self {
+        let mut locations = Self::starting_locations(node_radius, spacing, graph);
+        Self::minimize(node_radius, spacing, graph, &mut locations, max_step_count);
+        let min_x = locations
+            .iter()
+            .map(|(_, (x, _))| *x)
+            .min()
+            .unwrap_or_default();
+        let min_y = locations
+            .iter()
+            .map(|(_, (_, y))| *y)
+            .min()
+            .unwrap_or_default();
+
+        Self {
+            inner: ManualGridLayout::new(
+                node_radius,
+                spacing,
+                graph,
+                locations
+                    .into_iter()
+                    .map(|(node, (x, y))| (node, ((x + min_x) as usize, (y + min_y) as usize)))
+                    .collect(),
+            ),
+        }
+    }
+
+    fn starting_locations(
+        node_radius: f32,
+        spacing: f32,
+        graph: &'a G,
+    ) -> HashMap<NodeRef<'a, N>, (i32, i32)> {
+        MinGridLayout::new(node_radius, spacing, graph)
+            .inner
+            .locations
+            .into_iter()
+            .map(|(node, (x, y))| (node, (x as i32, y as i32)))
+            .collect()
+    }
+
+    fn score(
+        node_radius: f32,
+        spacing: f32,
+        graph: &'a G,
+        locations: &HashMap<NodeRef<'a, N>, (i32, i32)>,
+    ) -> f32 {
+        1.0
+    }
+
+    fn minimize(
+        node_radius: f32,
+        spacing: f32,
+        graph: &'a G,
+        locations: &mut HashMap<NodeRef<'a, N>, (i32, i32)>,
+        max_step_count: usize,
+    ) {
+        let mut min_score = Self::score(node_radius, spacing, graph, locations);
+        let nodes: Vec<_> = locations.keys().cloned().collect();
+        let mut coords: Vec<_> = nodes
+            .iter()
+            .flat_map(|node| locations.get(node))
+            .cloned()
+            .collect();
+
+        for i in (0..coords.len()).cycle().take(max_step_count) {
+            let (original_x, original_y) = coords[i];
+
+            for (x, y) in [
+                (original_x + 1, original_y),
+                (original_x - 1, original_y),
+                (original_x, original_y + 1),
+                (original_x, original_y - 1),
+            ] {
+                if coords
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, _)| j != &i)
+                    .any(|(_, (a, b))| a == &x && b == &y)
+                {
+                    continue;
+                }
+
+                locations.insert(nodes[i], (x, y));
+                let score = Self::score(node_radius, spacing, graph, locations);
+                if score < min_score {
+                    min_score = score;
+                    coords[i] = (x, y);
+                    continue;
+                } else {
+                    locations.insert(nodes[i], (original_x, original_y));
+                }
+            }
+        }
     }
 }
