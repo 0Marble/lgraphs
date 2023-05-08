@@ -4,5 +4,11 @@
 /outs.txt
 /fonts
 /images
-/graphs
 /test.sh
+
+/text/*
+!/text/graphs
+/text/graphs/*
+
+!/text/main.tex
+!/text/graphs/*.dot
