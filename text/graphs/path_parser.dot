@@ -1,0 +1,20 @@
+digraph {
+    node [shape=circle]
+    Q0 [style=invisible, height=0, width=0, fixedsize=true]
+    Q0 -> A
+    
+    A -> B [label="number"]
+    B -> C [label="'-'"]
+    C -> D [label="letter"]
+    C -> E [label="'['"]
+    C -> E [label="']'"]
+    D -> F [label="'-'"]
+    F -> E [label="'['"]
+    F -> E [label="']'"]
+    F -> A [label="'>'"]
+    E -> G [label="number"]
+    G -> H [label="'-'"]
+    H -> A [label="'>'"]
+
+    B [shape=doublecircle];
+}

@@ -21,22 +21,30 @@ impl Bracket {
 }
 
 pub trait Node: Debug + Clone + PartialEq + Eq + Hash {}
+impl Node for usize {}
+impl Node for char {}
+
+pub trait Letter: Debug + Clone + PartialEq + Eq + Hash {}
+impl Letter for usize {}
+impl Letter for char {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Edge<N>
+pub struct Edge<N, L>
 where
     N: Node,
+    L: Letter,
 {
     source: N,
     target: N,
-    contents: (Option<usize>, Option<Bracket>),
+    contents: (Option<L>, Option<Bracket>),
 }
 
-impl<N> Edge<N>
+impl<N, L> Edge<N, L>
 where
     N: Node,
+    L: Letter,
 {
-    pub fn new(source: N, target: N, contents: (Option<usize>, Option<Bracket>)) -> Self {
+    pub fn new(source: N, target: N, contents: (Option<L>, Option<Bracket>)) -> Self {
         Self {
             source,
             target,
@@ -52,25 +60,26 @@ where
         &self.target
     }
 
-    pub fn omega(&self) -> Option<&usize> {
+    pub fn letter(&self) -> Option<&L> {
         self.contents.0.as_ref()
     }
 
-    pub fn iota(&self) -> Option<&Bracket> {
+    pub fn bracket(&self) -> Option<&Bracket> {
         self.contents.1.as_ref()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Path<N>
+pub struct Path<N, L>
 where
     N: Node,
+    L: Letter,
 {
-    inner: hidden::Path<N>,
+    inner: hidden::Path<N, L>,
 }
 
-// format: path = letter | letter ('-' digit )? ('-' '[' | ']' digit)? '->' path
-impl FromStr for Path<char> {
+// format: path = number | number ('-' letter )? ('-' '[' | ']' digit )? '->' path
+impl FromStr for Path<usize, char> {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -95,30 +104,66 @@ impl FromStr for Path<char> {
             ))
         }
 
-        let mut path: Option<Path<char>> = None;
-        let mut prev_node = ' ';
+        fn read_number(
+            s: &str,
+            i: usize,
+            it: &mut impl Iterator<Item = (usize, char)>,
+        ) -> Option<usize> {
+            let mut res = 0;
+            if let Some(c) = s.chars().nth(i) {
+                if c.is_ascii_digit() {
+                    res = res * 10 + c.to_digit(10).unwrap();
+                } else {
+                    return None;
+                }
+            }
+
+            for i in i + 1..s.len() {
+                if let Some(c) = s.chars().nth(i) {
+                    if c.is_ascii_digit() {
+                        res = res * 10 + c.to_digit(10).unwrap();
+                        it.next();
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            Some(res as usize)
+        }
+
+        let mut path: Option<Path<usize, char>> = None;
+        let mut prev_node = 0;
         let mut item = None;
         let mut bracket = None;
 
         let mut state = State::A;
-        for (i, c) in s.char_indices() {
+        let mut it = s.char_indices();
+        loop {
+            let Some((i, c)) = it.next() else {
+                break;
+            };
             if c.is_whitespace() {
                 continue;
             }
 
             match state {
                 State::A => {
-                    if c.is_alphabetic() {
+                    if let Some(node) = read_number(s, i, &mut it) {
                         if let Some(path) = path.as_mut() {
-                            path.add_edge(Edge::new(prev_node, c, (item.take(), bracket.take())));
+                            path.add_edge(Edge::new(
+                                prev_node,
+                                node,
+                                (item.take(), bracket.take()),
+                            ));
                         } else {
-                            path = Some(Path::new(c));
+                            path = Some(Path::new(node));
                         }
 
-                        prev_node = c;
+                        prev_node = node;
                         state = State::B;
                     } else {
-                        make_error(s, i, "Expected a letter")?;
+                        make_error(s, i, "Expected a digit")?;
                     }
                 }
                 State::B => {
@@ -137,12 +182,12 @@ impl FromStr for Path<char> {
                         bracket = Some(Bracket::new(0, false));
                         state = State::E;
                     }
-                    c if c.is_numeric() => {
-                        item = Some(c.to_digit(10).unwrap() as usize);
+                    c if c.is_alphabetic() => {
+                        item = Some(c);
                         state = State::D;
                     }
                     '>' => state = State::A,
-                    _ => make_error(s, i, "Expected a digit, '>', '[' or ']'")?,
+                    _ => make_error(s, i, "Expected a letter, '>', '[' or ']'")?,
                 },
                 State::D => {
                     if c == '-' {
@@ -152,8 +197,8 @@ impl FromStr for Path<char> {
                     }
                 }
                 State::E => {
-                    if c.is_numeric() {
-                        bracket.as_mut().unwrap().index = c.to_digit(10).unwrap() as usize;
+                    if let Some(index) = read_number(s, i, &mut it) {
+                        bracket.as_mut().unwrap().index = index;
                         state = State::G;
                     } else {
                         make_error(s, i, "Expected a digit")?;
@@ -247,9 +292,6 @@ impl Default for BracketStack {
     }
 }
 
-impl Node for usize {}
-impl Node for char {}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Memory<N: Node> {
     node: N,
@@ -272,17 +314,18 @@ impl<N: Node> Memory<N> {
 
 impl<N: Node> Node for Memory<N> {}
 
-impl<N> Path<N>
+impl<N, L> Path<N, L>
 where
     N: Node,
+    L: Letter,
 {
-    pub fn mem(&self) -> Path<Memory<N>> {
+    pub fn mem(&self) -> Path<Memory<N>, L> {
         let mut stack = BracketStack::default();
         let mut res = Path::new(Memory::new(self.beg().clone(), stack.clone()));
 
         for edge in self.edges() {
             let start = Memory::new(edge.beg().clone(), stack.clone());
-            if let Some(bracket) = edge.iota() {
+            if let Some(bracket) = edge.bracket() {
                 stack.push(bracket.clone());
             }
             let end = Memory::new(edge.end().clone(), stack.clone());
@@ -292,7 +335,8 @@ where
         res
     }
 
-    pub fn neutral_loops(&self) -> Vec<(Path<N>, Path<N>, Path<N>)> {
+    #[allow(clippy::type_complexity)]
+    pub fn neutral_loops(&self) -> Vec<(Path<N, L>, Path<N, L>, Path<N, L>)> {
         let mut res = vec![];
         let mem = self.mem();
         let mut mem_repeats: HashMap<_, Vec<_>> = HashMap::new();
@@ -448,9 +492,10 @@ where
     }
 }
 
-impl<N> Path<N>
+impl<N, L> Path<N, L>
 where
     N: Node,
+    L: Letter,
 {
     pub fn new(node: N) -> Self {
         Self {
@@ -458,7 +503,7 @@ where
         }
     }
 
-    pub fn add_edge(&mut self, edge: Edge<N>) {
+    pub fn add_edge(&mut self, edge: Edge<N, L>) {
         match &mut self.inner {
             hidden::Path::Empty(_) => self.inner = hidden::Path::NonEmpty(vec![edge]),
             hidden::Path::NonEmpty(edges) => {
@@ -513,7 +558,7 @@ where
         }
     }
 
-    pub fn nth_edge(&self, n: usize) -> Option<&Edge<N>> {
+    pub fn nth_edge(&self, n: usize) -> Option<&Edge<N, L>> {
         match &self.inner {
             hidden::Path::NonEmpty(edges) => edges.get(n),
             _ => None,
@@ -524,7 +569,7 @@ where
         (0..self.len_in_edges() + 1).map(|i| self.nth_node(i).unwrap())
     }
 
-    pub fn edges(&self) -> impl Iterator<Item = &Edge<N>> + '_ {
+    pub fn edges(&self) -> impl Iterator<Item = &Edge<N, L>> + '_ {
         (0..self.len_in_edges()).map(|i| self.nth_edge(i).unwrap())
     }
 
@@ -535,7 +580,7 @@ where
 
         let mut stack = vec![];
         for edge in edges {
-            if let Some(bracket) = edge.iota() {
+            if let Some(bracket) = edge.bracket() {
                 stack.push(bracket.clone())
             }
         }
@@ -545,15 +590,16 @@ where
 }
 
 mod hidden {
-    use super::{Edge, Node};
+    use super::{Edge, Letter, Node};
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub enum Path<N>
+    pub enum Path<N, L>
     where
         N: Node,
+        L: Letter,
     {
         Empty(N),
-        NonEmpty(Vec<Edge<N>>),
+        NonEmpty(Vec<Edge<N, L>>),
     }
 }
 
@@ -563,79 +609,87 @@ mod tests {
 
     #[test]
     fn parse() {
-        let mut t = Path::new('a');
-        t.add_edge(Edge::new('a', 'b', (None, None)));
-        assert_eq!(t, Path::from_str("a->b").unwrap());
+        let mut t = Path::new(0);
+        t.add_edge(Edge::new(0, 1, (None, None)));
+        assert_eq!(t, Path::from_str("0->1").unwrap());
 
-        t = Path::new('a');
-        assert_eq!(t, Path::from_str("a").unwrap());
+        t = Path::new(0);
+        assert_eq!(t, Path::from_str("0").unwrap());
 
-        t = Path::new('a');
-        t.add_edge(Edge::new('a', 'b', (None, None)));
-        t.add_edge(Edge::new('b', 'c', (None, None)));
-        assert_eq!(t, Path::from_str("a->b->c").unwrap());
+        t = Path::new(0);
+        t.add_edge(Edge::new(0, 1, (None, None)));
+        t.add_edge(Edge::new(1, 2, (None, None)));
+        assert_eq!(t, Path::from_str("0->1->2").unwrap());
 
-        t = Path::new('a');
-        t.add_edge(Edge::new('a', 'b', (Some(1), None)));
-        assert_eq!(t, Path::from_str("a-1->b").unwrap());
+        t = Path::new(0);
+        t.add_edge(Edge::new(0, 1, (Some('a'), None)));
+        assert_eq!(t, Path::from_str("0-a->1").unwrap());
 
-        t = Path::new('a');
-        t.add_edge(Edge::new('a', 'b', (None, Some(Bracket::new(0, true)))));
-        assert_eq!(t, Path::from_str("a-[0->b").unwrap());
+        t = Path::new(0);
+        t.add_edge(Edge::new(0, 1, (None, Some(Bracket::new(0, true)))));
+        assert_eq!(t, Path::from_str("0-[0->1").unwrap());
 
-        t = Path::new('a');
-        t.add_edge(Edge::new('a', 'b', (None, Some(Bracket::new(0, false)))));
-        assert_eq!(t, Path::from_str("a-]0->b").unwrap());
+        t = Path::new(0);
+        t.add_edge(Edge::new(0, 1, (None, Some(Bracket::new(0, false)))));
+        assert_eq!(t, Path::from_str("0-]0->1").unwrap());
 
-        t = Path::new('a');
-        t.add_edge(Edge::new('a', 'b', (Some(1), Some(Bracket::new(0, false)))));
-        assert_eq!(t, Path::from_str("a-1-]0->b").unwrap());
+        t = Path::new(0);
+        t.add_edge(Edge::new(0, 1, (Some('a'), Some(Bracket::new(0, false)))));
+        assert_eq!(t, Path::from_str("0-a-]0->1").unwrap());
 
-        t = Path::new('a');
-        t.add_edge(Edge::new('a', 'b', (Some(1), Some(Bracket::new(0, true)))));
-        t.add_edge(Edge::new('b', 'c', (Some(2), Some(Bracket::new(1, false)))));
-        assert_eq!(t, Path::from_str("a-1-[0->b-2-]1->c").unwrap());
+        t = Path::new(0);
+        t.add_edge(Edge::new(0, 1, (Some('a'), Some(Bracket::new(0, true)))));
+        t.add_edge(Edge::new(1, 2, (Some('b'), Some(Bracket::new(1, false)))));
+        assert_eq!(t, Path::from_str("0-a-[0->1-b-]1->2").unwrap());
+
+        t = Path::new(10);
+        t.add_edge(Edge::new(
+            10,
+            20,
+            (Some('a'), Some(Bracket::new(3124, true))),
+        ));
+        assert_eq!(t, Path::from_str("10-a-[3124->20").unwrap());
     }
 
     #[test]
     fn get_w() {
-        let mut t = Path::from_str("a-[0->b-]0->a").unwrap();
+        let mut t = Path::from_str("0-[0->1-]0->0").unwrap();
         assert_eq!(t.get_w(), 1);
 
-        t = Path::from_str("a").unwrap();
+        t = Path::from_str("0").unwrap();
         assert_eq!(t.get_w(), 0);
 
-        t = Path::from_str("a->a").unwrap();
+        t = Path::from_str("0->0").unwrap();
         assert_eq!(t.get_w(), 1);
 
-        t = Path::from_str("a->a->a").unwrap();
+        t = Path::from_str("0->0->0").unwrap();
         assert_eq!(t.get_w(), 2);
 
-        t = Path::from_str("a-[0->b-[0->a").unwrap();
+        t = Path::from_str("0-[0->1-[0->0").unwrap();
         assert_eq!(t.get_w(), 0);
 
-        t = Path::from_str("a->b->c-[0->d->e-]0->c->a").unwrap();
+        t = Path::from_str("0->1->2-[0->3->4-]0->5->0").unwrap();
         assert_eq!(t.get_w(), 1);
     }
 
     #[test]
     fn get_d() {
-        assert_eq!(Path::from_str("a-[0->a->b-]0->b").unwrap().get_d(), 1);
-        assert_eq!(Path::from_str("a->b").unwrap().get_d(), 0);
-        assert_eq!(Path::from_str("a->a").unwrap().get_d(), 0);
-        assert_eq!(Path::from_str("a->b-[0->c->b->d-]0->d").unwrap().get_d(), 1);
+        assert_eq!(Path::from_str("0-[0->0->1-]0->1").unwrap().get_d(), 1);
+        assert_eq!(Path::from_str("0->1").unwrap().get_d(), 0);
+        assert_eq!(Path::from_str("0->0").unwrap().get_d(), 0);
+        assert_eq!(Path::from_str("0->1-[0->2->1->3-]0->3").unwrap().get_d(), 1);
         assert_eq!(
-            Path::from_str("a->b-[0->c->b->b->d-]0->d").unwrap().get_d(),
+            Path::from_str("0->1-[0->2->1->1->3-]0->3").unwrap().get_d(),
             1
         );
         assert_eq!(
-            Path::from_str("a->b-[0->c->b-[0->b->d-]0->d-]0->e->d")
+            Path::from_str("0->1-[0->2->1-[0->1->3-]0->3-]0->4->3")
                 .unwrap()
                 .get_d(),
             2
         );
         assert_eq!(
-            Path::from_str("a-[0->a->a->a->b-]0->b->c-[0->c-[0->c->e-]0->e->e-]0->f->e")
+            Path::from_str("0-[0->0->0->0->1-]0->1->2-[0->2-[0->2->3-]0->3->3-]0->4->3")
                 .unwrap()
                 .get_d(),
             2
