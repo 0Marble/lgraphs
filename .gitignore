@@ -9,6 +9,8 @@
 /text/*
 !/text/graphs
 /text/graphs/*
-
+!/text/images
+/text/images/*
 !/text/main.tex
 !/text/graphs/*.dot
+/git-add.sh
