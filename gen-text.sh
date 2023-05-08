@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# cd text
+cd text
 for GRAPH_FILE in $(find graphs/ -name *.dot -printf '%f\n')
 do
     echo $GRAPH_FILE
