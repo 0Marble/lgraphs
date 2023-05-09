@@ -1,4 +1,6 @@
-use std::{collections::HashMap, fmt::Debug, hash::Hash, str::FromStr};
+use std::{collections::HashMap, fmt::Debug, hash::Hash};
+
+use crate::graph::lgraph::LGraphLetter;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Bracket {
@@ -23,10 +25,13 @@ impl Bracket {
 pub trait Node: Debug + Clone + PartialEq + Eq + Hash {}
 impl Node for usize {}
 impl Node for char {}
+impl Node for String {}
 
 pub trait Letter: Debug + Clone + PartialEq + Eq + Hash {}
 impl Letter for usize {}
 impl Letter for char {}
+impl Letter for String {}
+impl Letter for Option<char> {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Edge<N, L>
@@ -36,7 +41,20 @@ where
 {
     source: N,
     target: N,
-    contents: (Option<L>, Option<Bracket>),
+    letter: L,
+}
+
+impl<N, L> Edge<N, LGraphLetter<L>>
+where
+    N: Node,
+    L: Letter,
+{
+    pub fn bracket(&self) -> Option<&Bracket> {
+        self.letter().bracket()
+    }
+    pub fn item(&self) -> Option<&L> {
+        self.letter().letter()
+    }
 }
 
 impl<N, L> Edge<N, L>
@@ -44,11 +62,11 @@ where
     N: Node,
     L: Letter,
 {
-    pub fn new(source: N, target: N, contents: (Option<L>, Option<Bracket>)) -> Self {
+    pub fn new(source: N, target: N, letter: L) -> Self {
         Self {
             source,
             target,
-            contents,
+            letter,
         }
     }
 
@@ -60,12 +78,8 @@ where
         &self.target
     }
 
-    pub fn letter(&self) -> Option<&L> {
-        self.contents.0.as_ref()
-    }
-
-    pub fn bracket(&self) -> Option<&Bracket> {
-        self.contents.1.as_ref()
+    pub fn letter(&self) -> &L {
+        &self.letter
     }
 }
 
@@ -76,177 +90,6 @@ where
     L: Letter,
 {
     inner: hidden::Path<N, L>,
-}
-
-// format: path = number | number ('-' letter )? ('-' '[' | ']' digit )? '->' path
-impl FromStr for Path<usize, char> {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        enum State {
-            A,
-            B,
-            C,
-            D,
-            E,
-            F,
-            G,
-            H,
-        }
-
-        fn make_error(s: &str, i: usize, msg: &str) -> Result<(), String> {
-            Err(format!(
-                "Error parsing path:\n\"{}\"\n {}^: {}",
-                s,
-                (0..i).map(|_| '~').collect::<String>(),
-                msg
-            ))
-        }
-
-        fn read_number(
-            s: &str,
-            i: usize,
-            it: &mut impl Iterator<Item = (usize, char)>,
-        ) -> Option<usize> {
-            let mut res = 0;
-            if let Some(c) = s.chars().nth(i) {
-                if c.is_ascii_digit() {
-                    res = res * 10 + c.to_digit(10).unwrap();
-                } else {
-                    return None;
-                }
-            }
-
-            for i in i + 1..s.len() {
-                if let Some(c) = s.chars().nth(i) {
-                    if c.is_ascii_digit() {
-                        res = res * 10 + c.to_digit(10).unwrap();
-                        it.next();
-                    } else {
-                        break;
-                    }
-                }
-            }
-
-            Some(res as usize)
-        }
-
-        let mut path: Option<Path<usize, char>> = None;
-        let mut prev_node = 0;
-        let mut item = None;
-        let mut bracket = None;
-
-        let mut state = State::A;
-        let mut it = s.char_indices();
-        loop {
-            let Some((i, c)) = it.next() else {
-                break;
-            };
-            if c.is_whitespace() {
-                continue;
-            }
-
-            match state {
-                State::A => {
-                    if let Some(node) = read_number(s, i, &mut it) {
-                        if let Some(path) = path.as_mut() {
-                            path.add_edge(Edge::new(
-                                prev_node,
-                                node,
-                                (item.take(), bracket.take()),
-                            ));
-                        } else {
-                            path = Some(Path::new(node));
-                        }
-
-                        prev_node = node;
-                        state = State::B;
-                    } else {
-                        make_error(s, i, "Expected a digit")?;
-                    }
-                }
-                State::B => {
-                    if c == '-' {
-                        state = State::C;
-                    } else {
-                        make_error(s, i, "Expected a '-'")?;
-                    }
-                }
-                State::C => match c {
-                    '[' => {
-                        bracket = Some(Bracket::new(0, true));
-                        state = State::E;
-                    }
-                    ']' => {
-                        bracket = Some(Bracket::new(0, false));
-                        state = State::E;
-                    }
-                    c if c.is_alphabetic() => {
-                        item = Some(c);
-                        state = State::D;
-                    }
-                    '>' => state = State::A,
-                    _ => make_error(s, i, "Expected a letter, '>', '[' or ']'")?,
-                },
-                State::D => {
-                    if c == '-' {
-                        state = State::F
-                    } else {
-                        make_error(s, i, "Expected a '-'")?;
-                    }
-                }
-                State::E => {
-                    if let Some(index) = read_number(s, i, &mut it) {
-                        bracket.as_mut().unwrap().index = index;
-                        state = State::G;
-                    } else {
-                        make_error(s, i, "Expected a digit")?;
-                    }
-                }
-                State::F => match c {
-                    '[' => {
-                        bracket = Some(Bracket::new(0, true));
-                        state = State::E;
-                    }
-                    ']' => {
-                        bracket = Some(Bracket::new(0, false));
-                        state = State::E;
-                    }
-                    '>' => state = State::A,
-                    _ => make_error(s, i, "Expected a '>', '[' or ']'")?,
-                },
-                State::G => {
-                    if c == '-' {
-                        state = State::H
-                    } else {
-                        make_error(s, i, "Expected a '-'")?;
-                    }
-                }
-                State::H => {
-                    if c == '>' {
-                        state = State::A
-                    } else {
-                        make_error(s, i, "Expected a '>'")?;
-                    }
-                }
-            }
-        }
-
-        let i = s.len();
-        match state {
-            State::A => make_error(s, i, "Expected a letter")?,
-            State::B => {}
-            State::C => make_error(s, i, "Expected a digit, '>', '[' or ']'")?,
-            State::D => make_error(s, i, "Expected a '-'")?,
-            State::E => make_error(s, i, "Expected a digit")?,
-            State::F => make_error(s, i, "Expected a '>', '[' or ']'")?,
-            State::G => make_error(s, i, "Expected a '-'")?,
-            State::H => make_error(s, i, "Expected a '>'")?,
-        }
-
-        Ok(path.unwrap())
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -265,15 +108,20 @@ impl BracketStack {
         Self { state: vec![] }
     }
 
-    pub fn push(&mut self, bracket: Bracket) -> bool {
+    pub fn push(&mut self, bracket: Bracket) {
         if bracket.is_open() {
             self.state.push(bracket.index());
-            true
         } else if Some(bracket.index()) == self.state.last().cloned() {
             self.state.pop();
+        } else {
+        }
+    }
+
+    pub fn can_accept(&self, bracket: Bracket) -> bool {
+        if bracket.is_open() {
             true
         } else {
-            false
+            Some(bracket.index()) == self.state.last().cloned()
         }
     }
 
@@ -283,6 +131,14 @@ impl BracketStack {
 
     pub fn state(&self) -> &[usize] {
         &self.state
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.state.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.state.len()
     }
 }
 
@@ -314,12 +170,12 @@ impl<N: Node> Memory<N> {
 
 impl<N: Node> Node for Memory<N> {}
 
-impl<N, L> Path<N, L>
+impl<N, L> Path<N, LGraphLetter<L>>
 where
     N: Node,
     L: Letter,
 {
-    pub fn mem(&self) -> Path<Memory<N>, L> {
+    pub fn mem(&self) -> Path<Memory<N>, LGraphLetter<L>> {
         let mut stack = BracketStack::default();
         let mut res = Path::new(Memory::new(self.beg().clone(), stack.clone()));
 
@@ -329,64 +185,23 @@ where
                 stack.push(bracket.clone());
             }
             let end = Memory::new(edge.end().clone(), stack.clone());
-            res.add_edge(Edge::new(start, end, edge.contents.clone()));
+            res.add_edge(Edge::new(start, end, edge.letter.clone()));
         }
 
         res
     }
 
-    #[allow(clippy::type_complexity)]
-    pub fn neutral_loops(&self) -> Vec<(Path<N, L>, Path<N, L>, Path<N, L>)> {
-        let mut res = vec![];
-        let mem = self.mem();
-        let mut mem_repeats: HashMap<_, Vec<_>> = HashMap::new();
-
-        for (i, node) in mem.nodes().enumerate() {
-            mem_repeats.entry(node).or_default().push(i);
-        }
-
-        for repeats in mem_repeats.values().filter(|r| r.len() > 1) {
-            for i in 0..repeats.len() {
-                let loop_start_node_index = repeats[i];
-                #[allow(clippy::needless_range_loop)]
-                for j in i + 1..repeats.len() {
-                    let loop_end_node_index = repeats[j];
-                    // loop_start_node_index = 2, loop_end_node_index = 5, len = 7
-                    // t1 = [0]0-1,[1]1-2
-                    // t2 = [2]2-3,[3]3-4,[4]4-5,
-                    // t3 = [5]5-6,[6]6-7
-
-                    // loop_start_index = 0, loop_end_index = 3, len = 5
-                    // t1 = 0
-                    // t2 = [0]0-1,[1]1-2,[2]2-3,
-                    // t3 = [3]3-4,[4]4-5,
-
-                    // loop_start_node_index = 2, loop_end_node_index = 5, len = 5
-                    // t1 = [0]0-1,[1]1-2
-                    // t2 = [2]2-3,[3]3-4,[4]4-5,
-                    // t3 = 5
-
-                    let mut t1 = Path::new(self.beg().clone());
-                    for i in 0..loop_start_node_index {
-                        t1.add_edge(self.nth_edge(i).unwrap().clone());
-                    }
-
-                    let mut t2 = Path::new(self.nth_node(loop_start_node_index).unwrap().clone());
-                    for i in loop_start_node_index..loop_end_node_index {
-                        t2.add_edge(self.nth_edge(i).unwrap().clone());
-                    }
-
-                    let mut t3 = Path::new(self.nth_node(loop_end_node_index).unwrap().clone());
-                    for i in loop_end_node_index..self.len_in_edges() {
-                        t3.add_edge(self.nth_edge(i).unwrap().clone());
-                    }
-
-                    res.push((t1, t2, t3))
-                }
+    pub fn depth(&self) -> usize {
+        let mut stack = BracketStack::new();
+        let mut max = 0;
+        for edge in self.edges() {
+            if let Some(bracket) = edge.bracket() {
+                stack.push(bracket.clone());
+                max = usize::max(max, stack.len());
             }
         }
 
-        res
+        max
     }
 
     pub fn get_w(&self) -> usize {
@@ -490,6 +305,21 @@ where
 
         max_d
     }
+
+    pub fn iota(&self) -> Vec<Bracket> {
+        let hidden::Path::NonEmpty(edges) = &self.inner else {
+            return  vec![];
+        };
+
+        let mut stack = vec![];
+        for edge in edges {
+            if let Some(bracket) = edge.bracket() {
+                stack.push(bracket.clone())
+            }
+        }
+
+        stack
+    }
 }
 
 impl<N, L> Path<N, L>
@@ -572,21 +402,6 @@ where
     pub fn edges(&self) -> impl Iterator<Item = &Edge<N, L>> + '_ {
         (0..self.len_in_edges()).map(|i| self.nth_edge(i).unwrap())
     }
-
-    pub fn iota(&self) -> Vec<Bracket> {
-        let hidden::Path::NonEmpty(edges) = &self.inner else {
-            return  vec![];
-        };
-
-        let mut stack = vec![];
-        for edge in edges {
-            if let Some(bracket) = edge.bracket() {
-                stack.push(bracket.clone())
-            }
-        }
-
-        stack
-    }
 }
 
 mod hidden {
@@ -605,48 +420,70 @@ mod hidden {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
 
     #[test]
     fn parse() {
         let mut t = Path::new(0);
-        t.add_edge(Edge::new(0, 1, (None, None)));
+        t.add_edge(Edge::new(0, 1, LGraphLetter::default()));
         assert_eq!(t, Path::from_str("0->1").unwrap());
 
         t = Path::new(0);
         assert_eq!(t, Path::from_str("0").unwrap());
 
         t = Path::new(0);
-        t.add_edge(Edge::new(0, 1, (None, None)));
-        t.add_edge(Edge::new(1, 2, (None, None)));
+        t.add_edge(Edge::new(0, 1, LGraphLetter::default()));
+        t.add_edge(Edge::new(1, 2, LGraphLetter::default()));
         assert_eq!(t, Path::from_str("0->1->2").unwrap());
 
         t = Path::new(0);
-        t.add_edge(Edge::new(0, 1, (Some('a'), None)));
+        t.add_edge(Edge::new(0, 1, LGraphLetter::new(Some('a'), None)));
         assert_eq!(t, Path::from_str("0-a->1").unwrap());
 
         t = Path::new(0);
-        t.add_edge(Edge::new(0, 1, (None, Some(Bracket::new(0, true)))));
+        t.add_edge(Edge::new(
+            0,
+            1,
+            LGraphLetter::new(None, Some(Bracket::new(0, true))),
+        ));
         assert_eq!(t, Path::from_str("0-[0->1").unwrap());
 
         t = Path::new(0);
-        t.add_edge(Edge::new(0, 1, (None, Some(Bracket::new(0, false)))));
+        t.add_edge(Edge::new(
+            0,
+            1,
+            LGraphLetter::new(None, Some(Bracket::new(0, false))),
+        ));
         assert_eq!(t, Path::from_str("0-]0->1").unwrap());
 
         t = Path::new(0);
-        t.add_edge(Edge::new(0, 1, (Some('a'), Some(Bracket::new(0, false)))));
+        t.add_edge(Edge::new(
+            0,
+            1,
+            LGraphLetter::new(Some('a'), Some(Bracket::new(0, false))),
+        ));
         assert_eq!(t, Path::from_str("0-a-]0->1").unwrap());
 
         t = Path::new(0);
-        t.add_edge(Edge::new(0, 1, (Some('a'), Some(Bracket::new(0, true)))));
-        t.add_edge(Edge::new(1, 2, (Some('b'), Some(Bracket::new(1, false)))));
+        t.add_edge(Edge::new(
+            0,
+            1,
+            LGraphLetter::new(Some('a'), Some(Bracket::new(0, true))),
+        ));
+        t.add_edge(Edge::new(
+            1,
+            2,
+            LGraphLetter::new(Some('b'), Some(Bracket::new(1, false))),
+        ));
         assert_eq!(t, Path::from_str("0-a-[0->1-b-]1->2").unwrap());
 
         t = Path::new(10);
         t.add_edge(Edge::new(
             10,
             20,
-            (Some('a'), Some(Bracket::new(3124, true))),
+            LGraphLetter::new(Some('a'), Some(Bracket::new(3124, true))),
         ));
         assert_eq!(t, Path::from_str("10-a-[3124->20").unwrap());
     }
