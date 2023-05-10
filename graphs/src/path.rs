@@ -108,12 +108,11 @@ impl BracketStack {
         Self { state: vec![] }
     }
 
-    pub fn push(&mut self, bracket: Bracket) {
+    pub fn accept(&mut self, bracket: Bracket) {
         if bracket.is_open() {
             self.state.push(bracket.index());
         } else if Some(bracket.index()) == self.state.last().cloned() {
             self.state.pop();
-        } else {
         }
     }
 
@@ -182,7 +181,7 @@ where
         for edge in self.edges() {
             let start = Memory::new(edge.beg().clone(), stack.clone());
             if let Some(bracket) = edge.bracket() {
-                stack.push(bracket.clone());
+                stack.accept(bracket.clone());
             }
             let end = Memory::new(edge.end().clone(), stack.clone());
             res.add_edge(Edge::new(start, end, edge.letter.clone()));
@@ -196,7 +195,7 @@ where
         let mut max = 0;
         for edge in self.edges() {
             if let Some(bracket) = edge.bracket() {
-                stack.push(bracket.clone());
+                stack.accept(bracket.clone());
                 max = usize::max(max, stack.len());
             }
         }
@@ -320,7 +319,129 @@ where
 
         stack
     }
+
+    pub fn is_balanced(&self) -> bool {
+        let mut stack = BracketStack::default();
+        for edge in self.edges() {
+            if let Some(bracket) = edge.bracket() {
+                if !stack.can_accept(bracket.clone()) {
+                    return false;
+                }
+                stack.accept(bracket.clone());
+            }
+        }
+
+        stack.is_empty()
+    }
+
+    pub fn is_subpath_balanced(&self, beg_node_index: usize, end_node_index: usize) -> bool {
+        if beg_node_index > end_node_index {
+            return false;
+        }
+
+        let mut stack = BracketStack::default();
+        for i in beg_node_index..end_node_index {
+            let Some(edge) = self.nth_edge(i) else {return false;};
+            if let Some(bracket) = edge.bracket() {
+                if !stack.can_accept(bracket.clone()) {
+                    return false;
+                }
+                stack.accept(bracket.clone());
+            }
+        }
+
+        stack.is_empty()
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn paired_loops(
+        &self,
+    ) -> Vec<(
+        (usize, usize),
+        (usize, usize),
+        (usize, usize),
+        (usize, usize),
+        (usize, usize),
+    )> {
+        let mem = self.mem();
+        let mut stack_repeats: HashMap<_, Vec<_>> = HashMap::new();
+        let mut node_repeats: HashMap<_, Vec<_>> = HashMap::new();
+
+        for (i, node) in mem.nodes().enumerate() {
+            stack_repeats.entry(node.brackets()).or_default().push(i);
+            node_repeats.entry(node.node()).or_default().push(i);
+        }
+
+        let mut res = vec![];
+        for mid_stack_repeats in stack_repeats.values() {
+            for i in 0..mid_stack_repeats.len() {
+                let mid_begin_node_index = mid_stack_repeats[i];
+                let mid_begin_node = self.nth_node(mid_begin_node_index).unwrap();
+
+                let left_node_repeats = node_repeats.get(mid_begin_node).unwrap();
+                if left_node_repeats.len() == 1 {
+                    continue;
+                }
+
+                #[allow(clippy::needless_range_loop)]
+                for j in i + 1..mid_stack_repeats.len() {
+                    let mid_end_node_index = mid_stack_repeats[j];
+                    let mid_end_node = self.nth_node(mid_end_node_index).unwrap();
+                    if mid_begin_node == mid_end_node {
+                        continue;
+                    }
+                    if !self.is_subpath_balanced(mid_begin_node_index, mid_end_node_index) {
+                        continue;
+                    }
+
+                    let right_node_repeats = node_repeats.get(mid_end_node).unwrap();
+                    if right_node_repeats.len() == 1 {
+                        continue;
+                    }
+
+                    for k in left_node_repeats.iter().rev() {
+                        let k = *k;
+                        if k >= mid_begin_node_index {
+                            continue;
+                        }
+                        if self.is_subpath_balanced(k, mid_begin_node_index) {
+                            continue;
+                        }
+
+                        let kth_mem = mem.nth_node(k).unwrap();
+
+                        for m in right_node_repeats {
+                            let m = *m;
+                            if m <= mid_end_node_index {
+                                continue;
+                            }
+                            if self.is_subpath_balanced(mid_end_node_index, m) {
+                                continue;
+                            }
+
+                            let mth_mem = mem.nth_node(m).unwrap();
+
+                            if mth_mem.brackets() == kth_mem.brackets() {
+                                res.push((
+                                    (0, k),
+                                    (k, mid_begin_node_index),
+                                    (mid_begin_node_index, mid_end_node_index),
+                                    (mid_end_node_index, m),
+                                    (m, self.len_in_nodes() - 1),
+                                ));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        res
+    }
 }
+
+impl Path<usize, LGraphLetter<char>> {}
 
 impl<N, L> Path<N, L>
 where
@@ -402,6 +523,19 @@ where
     pub fn edges(&self) -> impl Iterator<Item = &Edge<N, L>> + '_ {
         (0..self.len_in_edges()).map(|i| self.nth_edge(i).unwrap())
     }
+
+    pub fn subpath(&self, beg_node_index: usize, end_node_index: usize) -> Option<Self> {
+        if beg_node_index > end_node_index {
+            return None;
+        }
+        let mut t = Self::new(self.nth_node(beg_node_index)?.clone());
+
+        for i in beg_node_index..end_node_index {
+            t.add_edge(self.nth_edge(i)?.clone());
+        }
+
+        Some(t)
+    }
 }
 
 mod hidden {
@@ -423,6 +557,43 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
+
+    #[test]
+    fn paired_loops() {
+        let t =
+            Path::from_str("0-[0->0->0->0->1-]0->1->2-[0->2-[0->2->3-]0->3->3-]0->4->3").unwrap();
+        // (0)-[0->(0)->0->0->(1)-]0->(1) -> (2)-[0->(2)-[0->(2)->(3)-]0->(3)->3-]0->4->(3)
+        let loops = t.paired_loops();
+        panic!();
+    }
+
+    #[test]
+    fn subpath() {
+        assert_eq!(
+            Path::from_str("1->2->3").unwrap().subpath(0, 2).unwrap(),
+            Path::from_str("1->2->3").unwrap()
+        );
+        assert_eq!(
+            Path::from_str("1->2->3").unwrap().subpath(0, 1).unwrap(),
+            Path::from_str("1->2").unwrap()
+        );
+        assert_eq!(
+            Path::from_str("1->2->3").unwrap().subpath(0, 0).unwrap(),
+            Path::from_str("1").unwrap()
+        );
+        assert_eq!(
+            Path::from_str("1->2->3").unwrap().subpath(1, 2).unwrap(),
+            Path::from_str("2->3").unwrap()
+        );
+        assert_eq!(
+            Path::from_str("1->2->3").unwrap().subpath(2, 2).unwrap(),
+            Path::from_str("3").unwrap()
+        );
+        assert_eq!(
+            Path::from_str("1->2->3").unwrap().subpath(1, 1).unwrap(),
+            Path::from_str("2").unwrap()
+        );
+    }
 
     #[test]
     fn parse() {

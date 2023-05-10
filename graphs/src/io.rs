@@ -2,7 +2,7 @@ use crate::{
     graph::{
         default_graph::DefaultGraph,
         lgraph::{LGraph, LGraphLetter},
-        Graph,
+        Graph, ModifyableGraph,
     },
     path::{Bracket, Edge, Letter, Node, Path},
 };
@@ -378,7 +378,7 @@ impl DefaultGraph<usize, LGraphLetter<char>> {
         writeln!(s, "\n\t{} [start=true];", self.start_node()).unwrap();
         writeln!(s, "\tQ0 -> {};\n", self.start_node()).unwrap();
         for node in self.end_nodes() {
-            writeln!(s, "\t{} [end=true];", node).unwrap();
+            writeln!(s, "\t{} [end=true,shape=doublecircle];", node).unwrap();
         }
         writeln!(s).unwrap();
 

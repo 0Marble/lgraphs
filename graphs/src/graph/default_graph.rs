@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::path::{Edge, Letter, Node};
 
-use super::Graph;
+use super::{Graph, ModifyableGraph};
 
 #[derive(Debug, Clone)]
 pub struct DefaultGraph<N, L>
@@ -14,6 +14,21 @@ where
     nodes: HashSet<N>,
     start_node: N,
     end_nodes: HashSet<N>,
+}
+
+impl<N, L> ModifyableGraph<N, L> for DefaultGraph<N, L>
+where
+    N: Node,
+    L: Letter,
+{
+    fn new_empty(start_node: N, end_nodes: impl IntoIterator<Item = N>) -> Self {
+        Self::new(start_node, end_nodes)
+    }
+    fn add_edge(&mut self, edge: Edge<N, L>) {
+        self.nodes.insert(edge.beg().clone());
+        self.nodes.insert(edge.end().clone());
+        self.edges.push(edge)
+    }
 }
 
 impl<N, L> Graph<N, L> for DefaultGraph<N, L>
@@ -55,11 +70,5 @@ where
             start_node,
             end_nodes,
         }
-    }
-
-    pub fn add_edge(&mut self, edge: Edge<N, L>) {
-        self.nodes.insert(edge.beg().clone());
-        self.nodes.insert(edge.end().clone());
-        self.edges.push(edge)
     }
 }

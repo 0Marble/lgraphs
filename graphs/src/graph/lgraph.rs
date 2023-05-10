@@ -158,7 +158,7 @@ where
                     if new_path.depth() <= max_depth && new_path.get_w() <= self.w {
                         let mut new_brackets = brackets.clone();
                         if let Some(b) = edge.bracket() {
-                            new_brackets.push(b.clone())
+                            new_brackets.accept(b.clone())
                         }
                         self.state.push((new_path, new_brackets));
                     }

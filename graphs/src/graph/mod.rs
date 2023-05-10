@@ -1,4 +1,6 @@
-use crate::path::{Edge, Letter, Node};
+use std::collections::HashSet;
+
+use crate::path::{Edge, Letter, Node, Path};
 
 pub mod default_graph;
 pub mod lgraph;
@@ -35,5 +37,42 @@ where
         L: 'a,
     {
         Box::new(self.edges().filter(move |e| e.end() == node))
+    }
+}
+
+pub trait ModifyableGraph<N, L>: Graph<N, L>
+where
+    N: Node,
+    L: Letter,
+{
+    fn new_empty(start_node: N, end_nodes: impl IntoIterator<Item = N>) -> Self;
+    fn add_edge(&mut self, edge: Edge<N, L>);
+
+    fn from_paths(paths: impl IntoIterator<Item = Path<N, L>>) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let mut edges = HashSet::new();
+        let mut end_nodes = HashSet::new();
+        let mut start_node = None;
+
+        for path in paths.into_iter() {
+            if start_node.is_none() {
+                start_node = Some(path.beg().clone());
+            }
+            end_nodes.insert(path.end().clone());
+
+            for edge in path.edges() {
+                edges.insert(edge.clone());
+            }
+        }
+
+        start_node.map(|start_node| {
+            let mut g = Self::new_empty(start_node, end_nodes);
+            for edge in edges {
+                g.add_edge(edge);
+            }
+            g
+        })
     }
 }
