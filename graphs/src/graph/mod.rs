@@ -38,6 +38,12 @@ where
     {
         Box::new(self.edges().filter(move |e| e.end() == node))
     }
+    fn has_node(&self, node: &N) -> bool {
+        self.nodes().any(|n| n == node)
+    }
+    fn has_edge(&self, edge: &Edge<N, L>) -> bool {
+        self.edges().any(|e| e == edge)
+    }
 }
 
 pub trait ModifyableGraph<N, L>: Graph<N, L>

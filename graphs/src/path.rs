@@ -116,7 +116,7 @@ impl BracketStack {
         }
     }
 
-    pub fn can_accept(&self, bracket: Bracket) -> bool {
+    pub fn can_accept(&self, bracket: &Bracket) -> bool {
         if bracket.is_open() {
             true
         } else {
@@ -315,7 +315,7 @@ where
         let mut stack = BracketStack::default();
         for edge in self.edges() {
             if let Some(bracket) = edge.bracket() {
-                if !stack.can_accept(bracket.clone()) {
+                if !stack.can_accept(bracket) {
                     return false;
                 }
                 stack.accept(bracket.clone());
@@ -334,7 +334,7 @@ where
         for i in beg_node_index..end_node_index {
             let Some(edge) = self.nth_edge(i) else {return false;};
             if let Some(bracket) = edge.bracket() {
-                if !stack.can_accept(bracket.clone()) {
+                if !stack.can_accept(bracket) {
                     return false;
                 }
                 stack.accept(bracket.clone());
@@ -344,93 +344,110 @@ where
         stack.is_empty()
     }
 
-    #[allow(clippy::type_complexity)]
-    pub fn paired_loops(
-        &self,
-    ) -> Vec<(
-        (usize, usize),
-        (usize, usize),
-        (usize, usize),
-        (usize, usize),
-        (usize, usize),
-    )> {
-        let mem = self.mem();
-        let mut stack_repeats: HashMap<_, Vec<_>> = HashMap::new();
-        let mut node_repeats: HashMap<_, Vec<_>> = HashMap::new();
+    pub fn paired_loops(&self) -> impl Iterator<Item = ((usize, usize), (usize, usize))> + '_ {
+        // let mut res = vec![];
+        // for t21 in 0..self.len_in_nodes() {
+        //     for t22 in t21 + 1..self.len_in_nodes() {
+        //         for t41 in t22 + 1..self.len_in_nodes() {
+        //             for t42 in t41 + 1..self.len_in_nodes() {
+        //                 if self.is_nest((t21, t22), (t41, t42))
+        //                     && self.nth_node(t21) == self.nth_node(t22)
+        //                     && self.nth_node(t41) == self.nth_node(t42)
+        //                 {
+        //                     res.push(((t21, t22), (t41, t42)));
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
+        // res.into_iter()
 
-        for (i, node) in mem.nodes().enumerate() {
-            stack_repeats.entry(node.brackets()).or_default().push(i);
-            node_repeats.entry(node.node()).or_default().push(i);
+        let n = self.len_in_nodes();
+        (0..n)
+            .flat_map(move |t21| {
+                (t21 + 1..n)
+                    .filter(move |t22| self.nth_node(t21) == self.nth_node(*t22))
+                    .flat_map(move |t22| {
+                        (t22 + 1..n).flat_map(move |t41| {
+                            (t41 + 1..n)
+                                .filter(move |t42| self.nth_node(t41) == self.nth_node(*t42))
+                                .map(move |t42| ((t21, t22), (t41, t42)))
+                        })
+                    })
+            })
+            .filter(|(left, right)| self.is_nest(*left, *right))
+    }
+
+    pub fn is_nest(&self, left: (usize, usize), right: (usize, usize)) -> bool {
+        if left.0 == left.1 || right.0 == right.1 {
+            return false;
         }
 
-        let mut res = vec![];
-        for mid_stack_repeats in stack_repeats.values() {
-            for i in 0..mid_stack_repeats.len() {
-                let mid_begin_node_index = mid_stack_repeats[i];
-                let mid_begin_node = self.nth_node(mid_begin_node_index).unwrap();
+        let mut stack = BracketStack::default();
+        for i in left.0..left.1 {
+            let Some(edge) = self.nth_edge(i) else {return false;};
+            if let Some(bracket) = edge.bracket() {
+                if !stack.can_accept(bracket) {
+                    return false;
+                }
+                stack.accept(bracket.clone());
+            }
+        }
+        if stack.is_empty() {
+            return false;
+        } // (0-1) is not neutral
 
-                let left_node_repeats = node_repeats.get(mid_begin_node).unwrap();
-                if left_node_repeats.len() == 1 {
+        let stack_at_left_1 = stack.clone();
+        let mut mid_stack = BracketStack::default();
+        for i in left.1..right.0 {
+            let Some(edge) = self.nth_edge(i) else {return false;};
+            if let Some(bracket) = edge.bracket() {
+                if !stack.can_accept(bracket) || !mid_stack.can_accept(bracket) {
+                    return false;
+                }
+                stack.accept(bracket.clone());
+                mid_stack.accept(bracket.clone())
+            }
+        }
+        if stack != stack_at_left_1 {
+            return false;
+        } // (1-2) is neutral, but (0-1-2) isnt
+
+        for i in right.0..right.1 {
+            let Some(edge) = self.nth_edge(i) else {return false;};
+            if let Some(bracket) = edge.bracket() {
+                if !stack.can_accept(bracket) {
+                    return false;
+                }
+                stack.accept(bracket.clone());
+            }
+        }
+        if !stack.is_empty() {
+            return false;
+        } // (0-1-2-3) is neutral
+
+        true
+    }
+
+    pub fn is_simple_paired_loops(&self, left: (usize, usize), right: (usize, usize)) -> bool {
+        for t21 in left.0 + 1..left.1 {
+            if self.nth_node(t21) != self.nth_node(left.1) {
+                continue;
+            }
+
+            for t42 in right.0 + 1..right.1 {
+                if self.nth_node(right.0) != self.nth_node(t42) {
                     continue;
                 }
 
-                #[allow(clippy::needless_range_loop)]
-                for j in i + 1..mid_stack_repeats.len() {
-                    let mid_end_node_index = mid_stack_repeats[j];
-                    let mid_end_node = self.nth_node(mid_end_node_index).unwrap();
-                    if mid_begin_node == mid_end_node {
-                        continue;
-                    }
-                    if !self.is_subpath_balanced(mid_begin_node_index, mid_end_node_index) {
-                        continue;
-                    }
-
-                    let right_node_repeats = node_repeats.get(mid_end_node).unwrap();
-                    if right_node_repeats.len() == 1 {
-                        continue;
-                    }
-
-                    for k in left_node_repeats.iter().rev() {
-                        let k = *k;
-                        if k >= mid_begin_node_index {
-                            continue;
-                        }
-                        if self.is_subpath_balanced(k, mid_begin_node_index) {
-                            continue;
-                        }
-
-                        let kth_mem = mem.nth_node(k).unwrap();
-
-                        for m in right_node_repeats {
-                            let m = *m;
-                            if m <= mid_end_node_index {
-                                continue;
-                            }
-                            if self.is_subpath_balanced(mid_end_node_index, m) {
-                                continue;
-                            }
-
-                            let mth_mem = mem.nth_node(m).unwrap();
-
-                            if mth_mem.brackets() == kth_mem.brackets()
-                                && self.is_subpath_balanced(k, m)
-                            {
-                                res.push((
-                                    (0, k),
-                                    (k, mid_begin_node_index),
-                                    (mid_begin_node_index, mid_end_node_index),
-                                    (mid_end_node_index, m),
-                                    (m, self.len_in_nodes() - 1),
-                                ));
-                                break;
-                            }
-                        }
-                    }
+                if self.is_nest((t21, left.1), (right.0, t42))
+                    && self.is_nest((left.0, t21), (t42, right.1))
+                {
+                    return false;
                 }
             }
         }
-
-        res
+        true
     }
 }
 
@@ -529,6 +546,36 @@ where
 
         Some(t)
     }
+    pub fn loopify_on_first(&self) -> Option<Self> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let mut t = self.clone();
+        match &mut t.inner {
+            hidden::Path::Empty(_) => unreachable!(),
+            hidden::Path::NonEmpty(edges) => {
+                *edges.last_mut().unwrap() = edges.first().unwrap().clone();
+            }
+        }
+
+        Some(t)
+    }
+    pub fn loopify_on_last(&self) -> Option<Self> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let mut t = self.clone();
+        match &mut t.inner {
+            hidden::Path::Empty(_) => unreachable!(),
+            hidden::Path::NonEmpty(edges) => {
+                *edges.first_mut().unwrap() = edges.last().unwrap().clone();
+            }
+        }
+
+        Some(t)
+    }
 }
 
 mod hidden {
@@ -547,25 +594,166 @@ mod hidden {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use std::{collections::HashSet, str::FromStr};
 
     use super::*;
 
     #[test]
     fn paired_loops() {
+        for s in [
+            "0-[0->0->1-]0->1",
+            "0->1",
+            "0->0",
+            "0->1-[0->2->1->3-]0->3",
+            "0->1-[0->2->1->1->3-]0->3",
+            "0->1-[0->2->1-[0->1->3-]0->3-]0->4->3",
+            "0-[0->0->0->0->1-]0->1->2-[0->2-[0->2->3-]0->3->3-]0->4->3",
+        ] {
+            let t = Path::from_str(s).unwrap();
+            let loops: HashSet<_> = HashSet::from_iter(t.paired_loops());
+            println!("t: {}", t);
+
+            for ((t21, t22), (t41, t42)) in &loops {
+                println!("\tt1: {}", t.subpath(0, *t21).unwrap());
+                println!("\tt2: {}", t.subpath(*t21, *t22).unwrap());
+                println!("\tt3: {}", t.subpath(*t22, *t41).unwrap());
+                println!("\tt4: {}", t.subpath(*t41, *t42).unwrap());
+                println!("\tt5: {}", t.subpath(*t42, t.len_in_nodes() - 1).unwrap());
+                println!();
+            }
+
+            for t21 in 0..t.len_in_nodes() {
+                for t22 in t21 + 1..t.len_in_nodes() {
+                    for t41 in t22 + 1..t.len_in_nodes() {
+                        for t42 in t41 + 1..t.len_in_nodes() {
+                            let left = (t21, t22);
+                            let right = (t41, t42);
+                            if left.0 != left.1
+                                && right.0 != right.1
+                                && !t.is_subpath_balanced(left.0, left.1)
+                                && !t.is_subpath_balanced(right.0, right.1)
+                                && t.is_subpath_balanced(left.0, right.1)
+                                && t.is_subpath_balanced(left.1, right.1)
+                                && t.nth_node(left.0) == t.nth_node(left.1)
+                                && t.nth_node(right.0) == t.nth_node(right.1)
+                            {
+                                assert!(loops.contains(&(left, right)));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn simple_paired_loops() {
+        #[allow(clippy::type_complexity)]
+        fn split<N, L>(
+            t: &Path<N, L>,
+            left: (usize, usize),
+            right: (usize, usize),
+        ) -> (Path<N, L>, Path<N, L>, Path<N, L>, Path<N, L>, Path<N, L>)
+        where
+            N: Node,
+            L: Letter,
+        {
+            (
+                t.subpath(0, left.0).unwrap(),
+                t.subpath(left.0, left.1).unwrap(),
+                t.subpath(left.1, right.0).unwrap(),
+                t.subpath(right.0, right.1).unwrap(),
+                t.subpath(right.1, t.len_in_nodes() - 1).unwrap(),
+            )
+        }
+        fn get_loops(
+            t: &Path<usize, LGraphLetter<char>>,
+        ) -> impl Iterator<
+            Item = (
+                Path<usize, LGraphLetter<char>>,
+                Path<usize, LGraphLetter<char>>,
+                Path<usize, LGraphLetter<char>>,
+                Path<usize, LGraphLetter<char>>,
+                Path<usize, LGraphLetter<char>>,
+            ),
+        > + '_ {
+            t.paired_loops()
+                .filter(|(l, r)| t.is_simple_paired_loops(*l, *r))
+                .map(move |(l, r)| split(t, l, r))
+        }
+        #[allow(clippy::type_complexity)]
+        fn print_paths(
+            t: &(
+                Path<usize, LGraphLetter<char>>,
+                Path<usize, LGraphLetter<char>>,
+                Path<usize, LGraphLetter<char>>,
+                Path<usize, LGraphLetter<char>>,
+                Path<usize, LGraphLetter<char>>,
+            ),
+        ) {
+            let (t1, t2, t3, t4, t5) = t;
+
+            println!("t1: {}", t1);
+            println!("t2: {}", t2);
+            println!("t3: {}", t3);
+            println!("t4: {}", t4);
+            println!("t5: {}\n", t5);
+        }
+
+        let t = Path::from_str("0-[0->0->1-]0->1").unwrap();
+        let loops: HashSet<_> = get_loops(&t).inspect(print_paths).collect();
+        let actual_loops =
+            HashSet::from_iter([split(&t, (0, 1), (2, 3))].into_iter().inspect(print_paths));
+        assert_eq!(loops, actual_loops);
+
+        let t = Path::from_str("0->1").unwrap();
+        let loops: HashSet<_> = get_loops(&t).inspect(print_paths).collect();
+        let actual_loops = HashSet::from_iter([].into_iter().inspect(print_paths));
+        assert_eq!(loops, actual_loops);
+
+        let t = Path::from_str("0->1").unwrap();
+        let loops: HashSet<_> = get_loops(&t).inspect(print_paths).collect();
+        let actual_loops = HashSet::from_iter([].into_iter().inspect(print_paths));
+        assert_eq!(loops, actual_loops);
+
+        let t = Path::from_str("1-[0->1-[0->1->2-]0->2-]0->2").unwrap();
+        let loops: HashSet<_> = get_loops(&t).inspect(print_paths).collect();
+        let actual_loops = HashSet::from_iter(
+            [split(&t, (0, 1), (4, 5)), split(&t, (1, 2), (3, 4))]
+                .into_iter()
+                .inspect(print_paths),
+        );
+        assert_eq!(loops, actual_loops);
+
+        let t = Path::from_str("0-[0->0->1-[0->1->2-]0->2-]0->2").unwrap();
+        let loops: HashSet<_> = get_loops(&t).inspect(print_paths).collect();
+        let actual_loops = HashSet::from_iter(
+            [split(&t, (0, 1), (5, 6)), split(&t, (2, 3), (4, 5))]
+                .into_iter()
+                .inspect(print_paths),
+        );
+        assert_eq!(loops, actual_loops);
+
+        // 0     1  2  3  4     5  6     7     8  9    10 11    12 13
+        // 0-[0->0->0->0->1-]0->1->2-[0->2-[0->2->3-]0->3->3-]0->4->3
         let t =
             Path::from_str("0-[0->0->0->0->1-]0->1->2-[0->2-[0->2->3-]0->3->3-]0->4->3").unwrap();
-        // (0)-[0->(0)->0->0->(1)-]0->(1) -> (2)-[0->(2)-[0->(2)->(3)-]0->(3)->3-]0->4->(3)
-        let loops = t.paired_loops();
-        for ((t11, t12), (t21, t22), (t31, t32), (t41, t42), (t51, t52)) in loops {
-            println!("t1: {}", t.subpath(t11, t12).unwrap());
-            println!("t2: {}", t.subpath(t21, t22).unwrap());
-            println!("t3: {}", t.subpath(t31, t32).unwrap());
-            println!("t4: {}", t.subpath(t41, t42).unwrap());
-            println!("t5: {}", t.subpath(t51, t52).unwrap());
-            println!()
-        }
-        panic!();
+        let loops: HashSet<_> = get_loops(&t).inspect(print_paths).collect();
+        println!("!!!!!!!");
+        let actual_loops = HashSet::from_iter(
+            [
+                split(&t, (0, 1), (4, 5)),
+                split(&t, (0, 2), (4, 5)),
+                split(&t, (0, 3), (4, 5)),
+                split(&t, (6, 7), (11, 13)),
+                split(&t, (6, 7), (10, 13)),
+                split(&t, (7, 8), (9, 10)),
+                split(&t, (7, 8), (9, 11)),
+            ]
+            .into_iter()
+            .inspect(print_paths),
+        );
+        assert_eq!(loops, actual_loops);
     }
 
     #[test]
@@ -690,6 +878,18 @@ mod tests {
         assert_eq!(
             Path::from_str("0->1-[0->2->1->1->3-]0->3").unwrap().get_d(),
             1
+        );
+        assert_eq!(
+            Path::from_str("0-[0->0->1-[0->1->2-]0->2-]0->2")
+                .unwrap()
+                .get_d(),
+            1
+        );
+        assert_eq!(
+            Path::from_str("1-[0->1-[0->1->2-]0->2-]0->2")
+                .unwrap()
+                .get_d(),
+            2
         );
         assert_eq!(
             Path::from_str("0->1-[0->2->1-[0->1->3-]0->3-]0->4->3")

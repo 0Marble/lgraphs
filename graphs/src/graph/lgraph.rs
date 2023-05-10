@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
-use crate::path::{Bracket, BracketStack, Letter, Node, Path};
+use crate::path::{Bracket, BracketStack, Letter, Memory, Node, Path};
 
-use super::Graph;
+use super::{Graph, ModifyableGraph};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct LGraphLetter<L>
@@ -96,6 +96,48 @@ where
     }
 }
 
+impl<G, N, L> LGraph<G, N, L>
+where
+    G: ModifyableGraph<N, LGraphLetter<L>>,
+    N: Node,
+    L: Letter,
+{
+    pub fn normal_form<G0>(&self, d0: usize) -> LGraph<G0, Memory<N>, L>
+    where
+        G0: ModifyableGraph<Memory<N>, LGraphLetter<L>>,
+    {
+        let (core0, core1): (Vec<_>, Vec<_>) = self.core(1, d0 + 1).partition(|p| p.get_d() <= d0);
+        let mut g0 = G0::from_paths(core0.into_iter().map(|t| t.mem())).unwrap();
+
+        for t in core1 {
+            let mem = t.mem();
+            for (left, right) in t
+                .paired_loops()
+                .filter(|(l, r)| t.is_simple_paired_loops(*l, *r))
+            {
+                let t2 = mem
+                    .subpath(left.0, left.1)
+                    .unwrap()
+                    .loopify_on_first()
+                    .unwrap();
+                for edge in t2.edges() {
+                    g0.add_edge(edge.clone());
+                }
+
+                let t4 = mem
+                    .subpath(right.0, right.1)
+                    .unwrap()
+                    .loopify_on_last()
+                    .unwrap();
+                for edge in t4.edges() {
+                    g0.add_edge(edge.clone());
+                }
+            }
+        }
+        LGraph::new(g0)
+    }
+}
+
 struct CoreIter<'a, G, N, L>
 where
     G: Graph<N, LGraphLetter<L>>,
@@ -104,7 +146,6 @@ where
     L: 'a,
 {
     graph: &'a LGraph<G, N, L>,
-    #[allow(clippy::type_complexity)]
     state: Vec<(Path<N, LGraphLetter<L>>, BracketStack)>,
     w: usize,
     d: usize,
@@ -149,10 +190,7 @@ where
             }
 
             for edge in self.graph.edges_from(node) {
-                if edge
-                    .bracket()
-                    .map_or(true, |b| brackets.can_accept(b.clone()))
-                {
+                if edge.bracket().map_or(true, |b| brackets.can_accept(b)) {
                     let mut new_path = path.clone();
                     new_path.add_edge(edge.clone());
                     if new_path.depth() <= max_depth && new_path.get_w() <= self.w {
