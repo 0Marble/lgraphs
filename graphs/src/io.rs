@@ -4,7 +4,7 @@ use crate::{
         lgraph::{LGraph, LGraphLetter},
         Graph, ModifyableGraph,
     },
-    path::{Bracket, Edge, Letter, Node, Path},
+    path::{Bracket, BracketStack, Edge, Letter, Memory, Node, Path},
 };
 use std::{fmt::Display, fmt::Write, str::FromStr};
 
@@ -357,6 +357,97 @@ impl FromStr for LGraphLetter<char> {
     }
 }
 
+#[derive(Debug)]
+pub enum MemoryParseError {
+    ExpectedDigitOrOpenCurly,
+    ExpectedDigit,
+    ExpectedDigitOrComaOrCloseCurly,
+    ExpectedDigitOrCloseCurly,
+}
+
+impl std::error::Error for MemoryParseError {}
+
+impl Display for MemoryParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+// number '{' (number )? (',' number)* '}'
+// A - digit -> A
+// A - '{' -> B
+// B - digit -> D
+// B - '}' -> End
+// C - digit -> D
+// D - digit -> D
+// D - ',' -> C
+// D - '}' -> End
+impl FromStr for Memory<usize> {
+    type Err = MemoryParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        #[derive(Debug, PartialEq, Eq)]
+        enum State {
+            A,
+            B,
+            C,
+            D,
+        }
+        let mut state = State::A;
+        let mut node = 0;
+        let mut indices = vec![];
+        for c in s.chars() {
+            if c.is_whitespace() {
+                continue;
+            }
+
+            match state {
+                State::A => match c {
+                    '{' => state = State::B,
+                    c if c.is_ascii_digit() => {
+                        state = State::A;
+                        node = node * 10 + c.to_digit(10).unwrap() as usize;
+                    }
+                    _ => Err(MemoryParseError::ExpectedDigitOrOpenCurly)?,
+                },
+                State::B => match c {
+                    '}' => break,
+                    c if c.is_ascii_digit() => {
+                        state = State::D;
+                        indices.push(c.to_digit(10).unwrap() as usize);
+                    }
+                    _ => Err(MemoryParseError::ExpectedDigitOrCloseCurly)?,
+                },
+                State::C => {
+                    if c.is_ascii_digit() {
+                        let cur = indices.last_mut().unwrap();
+                        *cur = *cur * 10 + c.to_digit(10).unwrap() as usize;
+                        state = State::D;
+                    } else {
+                        Err(MemoryParseError::ExpectedDigit)?
+                    }
+                }
+                State::D => match c {
+                    '}' => break,
+                    ',' => state = State::C,
+                    c if c.is_ascii_digit() => {
+                        let cur = indices.last_mut().unwrap();
+                        *cur = *cur * 10 + c.to_digit(10).unwrap() as usize;
+                        state = State::D;
+                    }
+                    _ => Err(MemoryParseError::ExpectedDigitOrComaOrCloseCurly)?,
+                },
+            }
+        }
+
+        let mut stack = BracketStack::default();
+        for index in indices {
+            stack.accept(Bracket::new(index, true));
+        }
+        Ok(Memory::new(node, stack))
+    }
+}
+
 impl DefaultGraph<usize, LGraphLetter<char>> {
     pub fn parse_dot(s: &str) -> Result<Self, DefaultGraphParseError> {
         Self::parse_dot_custom(
@@ -429,9 +520,102 @@ impl DefaultGraph<usize, LGraphLetter<char>> {
     }
 }
 
+impl DefaultGraph<Memory<usize>, LGraphLetter<char>> {
+    pub fn parse_dot(s: &str) -> Result<Self, DefaultGraphParseError> {
+        Self::parse_dot_custom(
+            s,
+            |(attr, val)| match attr {
+                "item" => Some(LGraphLetter::from_str(
+                    val.trim_start_matches('\"').trim_end_matches('\"'),
+                )),
+                _ => None,
+            },
+            |name| name.parse(),
+        )
+    }
+
+    pub fn write_dot(&self) -> String {
+        let mut s = String::new();
+        writeln!(s, "digraph {{\n\tnode [shape=circle];\n\tQ0 [style=invisible, height=0, width=0, fixedsize=true];").unwrap();
+
+        fn write_mem(mem: &Memory<usize>) -> String {
+            format!(
+                "\"{}{{{}}}\"",
+                mem.node(),
+                mem.brackets()
+                    .state()
+                    .iter()
+                    .map(|n| n.to_string() + ", ")
+                    .collect::<String>()
+                    .trim_end_matches(", ")
+            )
+        }
+
+        writeln!(s, "\n\t{} [start=true];", write_mem(self.start_node())).unwrap();
+        writeln!(s, "\tQ0 -> {};\n", write_mem(self.start_node())).unwrap();
+        for node in self.end_nodes() {
+            writeln!(s, "\t{} [end=true,shape=doublecircle];", write_mem(node)).unwrap();
+        }
+        writeln!(s).unwrap();
+
+        for node in self.nodes() {
+            writeln!(s, "\t{};", write_mem(node)).unwrap();
+        }
+        writeln!(s).unwrap();
+
+        for edge in self.edges() {
+            write!(
+                s,
+                "\t{} -> {}",
+                write_mem(edge.beg()),
+                write_mem(edge.end())
+            )
+            .unwrap();
+            let mut item_string = String::new();
+            let mut label_string = String::new();
+            if let Some(item) = edge.item() {
+                item_string.push(*item);
+                label_string.push(*item);
+            }
+            if let Some(bracket) = edge.bracket() {
+                write!(
+                    item_string,
+                    "{}{}",
+                    if bracket.is_open() { '[' } else { ']' },
+                    bracket.index()
+                )
+                .unwrap();
+
+                if !label_string.is_empty() {
+                    label_string.push('\\');
+                    label_string.push('n');
+                }
+
+                write!(
+                    label_string,
+                    "{}{}",
+                    if bracket.is_open() { '[' } else { ']' },
+                    bracket.index()
+                )
+                .unwrap();
+            }
+
+            if !label_string.is_empty() {
+                write!(s, " [item=\"{}\", label=\"{}\"]", item_string, label_string).unwrap();
+            }
+            writeln!(s, ";").unwrap();
+        }
+
+        write!(s, "}}").unwrap();
+        s
+    }
+}
+
 impl LGraph<DefaultGraph<usize, LGraphLetter<char>>, usize, char> {
     pub fn parse_dot(s: &str) -> Result<Self, DefaultGraphParseError> {
-        Ok(Self::new(DefaultGraph::<_, LGraphLetter<_>>::parse_dot(s)?))
+        Ok(Self::new(
+            DefaultGraph::<usize, LGraphLetter<_>>::parse_dot(s)?,
+        ))
     }
 
     pub fn write_dot(&self) -> String {

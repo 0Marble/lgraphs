@@ -555,7 +555,9 @@ where
         match &mut t.inner {
             hidden::Path::Empty(_) => unreachable!(),
             hidden::Path::NonEmpty(edges) => {
-                *edges.last_mut().unwrap() = edges.first().unwrap().clone();
+                let first = edges.first().unwrap().clone();
+                let last = edges.last_mut().unwrap();
+                last.target = first.source;
             }
         }
 
@@ -570,11 +572,22 @@ where
         match &mut t.inner {
             hidden::Path::Empty(_) => unreachable!(),
             hidden::Path::NonEmpty(edges) => {
-                *edges.first_mut().unwrap() = edges.last().unwrap().clone();
+                let last = edges.last().unwrap().clone();
+                let first = edges.first_mut().unwrap();
+                first.source = last.target;
             }
         }
 
         Some(t)
+    }
+
+    pub fn concat(&self, next: &Self) -> Self {
+        let mut t = Path::new(self.beg().clone());
+        for edge in self.edges().chain(next.edges()) {
+            t.add_edge(edge.clone());
+        }
+
+        t
     }
 }
 

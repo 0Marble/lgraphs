@@ -92,16 +92,9 @@ where
         L: 'a,
         N: 'a,
     {
-        Box::new(CoreIter::new(self, w, d))
+        CoreIter::new(self, w, d)
     }
-}
 
-impl<G, N, L> LGraph<G, N, L>
-where
-    G: ModifyableGraph<N, LGraphLetter<L>>,
-    N: Node,
-    L: Letter,
-{
     pub fn normal_form<G0>(&self, d0: usize) -> LGraph<G0, Memory<N>, L>
     where
         G0: ModifyableGraph<Memory<N>, LGraphLetter<L>>,
@@ -115,22 +108,41 @@ where
                 .paired_loops()
                 .filter(|(l, r)| t.is_simple_paired_loops(*l, *r))
             {
-                let t2 = mem
+                let t1 = t.subpath(0, left.0).unwrap();
+                let t3 = t.subpath(left.1, right.0).unwrap();
+                let t5 = t.subpath(right.1, t.len_in_nodes() - 1).unwrap();
+
+                if t1.concat(&t3).concat(&t5).get_d() > d0 {
+                    continue;
+                }
+
+                let t2_mem_loop = mem
                     .subpath(left.0, left.1)
                     .unwrap()
                     .loopify_on_first()
                     .unwrap();
-                for edge in t2.edges() {
-                    g0.add_edge(edge.clone());
+                if !g0.has_node(t2_mem_loop.end()) {
+                    continue;
                 }
 
-                let t4 = mem
+                for edge in t2_mem_loop.edges() {
+                    if !g0.has_edge(edge) {
+                        g0.add_edge(edge.clone());
+                    }
+                }
+
+                let t4_mem_loop = mem
                     .subpath(right.0, right.1)
                     .unwrap()
                     .loopify_on_last()
                     .unwrap();
-                for edge in t4.edges() {
-                    g0.add_edge(edge.clone());
+                if !g0.has_node(t4_mem_loop.end()) {
+                    continue;
+                }
+                for edge in t4_mem_loop.edges() {
+                    if !g0.has_edge(edge) {
+                        g0.add_edge(edge.clone());
+                    }
                 }
             }
         }
@@ -216,6 +228,8 @@ where
 mod tests {
     use std::{collections::HashSet, str::FromStr};
 
+    use crate::graph::default_graph::DefaultGraph;
+
     use super::*;
 
     #[test]
@@ -267,5 +281,57 @@ mod tests {
                 .collect::<HashSet<_>>(),
             core12
         );
+    }
+
+    #[test]
+    fn normal_form() {
+        let g = r#"
+        digraph {
+            node [shape=circle]
+            Q0 [style=invisible, height=0, width=0, fixedsize=true]
+            Q0 -> 1
+        
+            1 [start=true]
+            3 [end=true,shape=doublecircle]
+        
+            1 -> 1 [item="a[1", label="a\n[1"]
+            1 -> 2 [item="d[2", label="d\n[2"]
+            2 -> 2 [item="b]2", label="b\n]2"]
+            2 -> 2 [item="c[3", label="c\n[3"]
+            2 -> 3 [item="d]3", label="d\n]3"]
+            3 -> 3 [item="a]1", label="a\n]1"]
+        }
+        "#;
+        let g = LGraph::parse_dot(g).unwrap();
+        let g1 = g.normal_form::<DefaultGraph<_, _>>(1);
+        println!("{}", g1.graph().write_dot());
+
+        let g = r#"
+        digraph {
+            node [shape=circle];
+            Q0 [style=invisible, height=0, width=0, fixedsize=true];
+        
+            1 [start=true];
+            Q0 -> 1;
+        
+            6 [end=true];
+        
+            1 -> 2 [item="[1", label="[1"];
+            2 -> 2 [item="a[2", label="a\n[2"];
+            2 -> 3 [item="b", label="b"];
+            3 -> 3 [item="a]2", label="a\n]2"];
+            3 -> 4 [item="b", label="b"];
+            4 -> 4 [item="]2", label="]2"];
+            3 -> 5 [item="a]1", label="a\n]1"];
+            5 -> 5 [item="a", label="a"];
+            5 -> 6 [item="b", label="b"];
+            4 -> 6 [item="]1", label="]1"];
+        }
+"#;
+        let g = LGraph::parse_dot(g).unwrap();
+        let g1 = g.normal_form::<DefaultGraph<_, _>>(1);
+        println!("{}", g1.graph().write_dot());
+
+        panic!("check the graph manually...");
     }
 }
