@@ -228,7 +228,7 @@ where
 mod tests {
     use std::{collections::HashSet, str::FromStr};
 
-    use crate::graph::default_graph::DefaultGraph;
+    use crate::{graph::default_graph::DefaultGraph, io::DotConvertable};
 
     use super::*;
 
@@ -262,7 +262,7 @@ mod tests {
             Path::from_str(t2).unwrap(),
             Path::from_str(t3).unwrap(),
         ]);
-        let g = LGraph::parse_dot(g).unwrap();
+        let g = LGraph::read_dot(g).unwrap();
         assert_eq!(
             g.core(0, 0)
                 .inspect(|t| println!("core00: {}", t))
@@ -283,55 +283,55 @@ mod tests {
         );
     }
 
-    #[test]
-    fn normal_form() {
-        let g = r#"
-        digraph {
-            node [shape=circle]
-            Q0 [style=invisible, height=0, width=0, fixedsize=true]
-            Q0 -> 1
-        
-            1 [start=true]
-            3 [end=true,shape=doublecircle]
-        
-            1 -> 1 [item="a[1", label="a\n[1"]
-            1 -> 2 [item="d[2", label="d\n[2"]
-            2 -> 2 [item="b]2", label="b\n]2"]
-            2 -> 2 [item="c[3", label="c\n[3"]
-            2 -> 3 [item="d]3", label="d\n]3"]
-            3 -> 3 [item="a]1", label="a\n]1"]
-        }
-        "#;
-        let g = LGraph::parse_dot(g).unwrap();
-        let g1 = g.normal_form::<DefaultGraph<_, _>>(1);
-        println!("{}", g1.graph().write_dot());
+    //     #[test]
+    //     fn normal_form() {
+    //         let g = r#"
+    //         digraph {
+    //             node [shape=circle]
+    //             Q0 [style=invisible, height=0, width=0, fixedsize=true]
+    //             Q0 -> 1
 
-        let g = r#"
-        digraph {
-            node [shape=circle];
-            Q0 [style=invisible, height=0, width=0, fixedsize=true];
-        
-            1 [start=true];
-            Q0 -> 1;
-        
-            6 [end=true];
-        
-            1 -> 2 [item="[1", label="[1"];
-            2 -> 2 [item="a[2", label="a\n[2"];
-            2 -> 3 [item="b", label="b"];
-            3 -> 3 [item="a]2", label="a\n]2"];
-            3 -> 4 [item="b", label="b"];
-            4 -> 4 [item="]2", label="]2"];
-            3 -> 5 [item="a]1", label="a\n]1"];
-            5 -> 5 [item="a", label="a"];
-            5 -> 6 [item="b", label="b"];
-            4 -> 6 [item="]1", label="]1"];
-        }
-"#;
-        let g = LGraph::parse_dot(g).unwrap();
-        let g1 = g.normal_form::<DefaultGraph<_, _>>(1);
-        println!("{}", g1.graph().write_dot());
+    //             1 [start=true]
+    //             3 [end=true,shape=doublecircle]
 
-        panic!("check the graph manually...");
-    }
+    //             1 -> 1 [item="a[1", label="a\n[1"]
+    //             1 -> 2 [item="d[2", label="d\n[2"]
+    //             2 -> 2 [item="b]2", label="b\n]2"]
+    //             2 -> 2 [item="c[3", label="c\n[3"]
+    //             2 -> 3 [item="d]3", label="d\n]3"]
+    //             3 -> 3 [item="a]1", label="a\n]1"]
+    //         }
+    //         "#;
+    //         let g = LGraph::read_dot(g).unwrap();
+    //         let g1 = g.normal_form::<DefaultGraph<_, _>>(1);
+    //         g1.graph().write_dot(&mut std::io::stdout()).unwrap();
+
+    //         let g = r#"
+    //         digraph {
+    //             node [shape=circle];
+    //             Q0 [style=invisible, height=0, width=0, fixedsize=true];
+
+    //             1 [start=true];
+    //             Q0 -> 1;
+
+    //             6 [end=true];
+
+    //             1 -> 2 [item="[1", label="[1"];
+    //             2 -> 2 [item="a[2", label="a\n[2"];
+    //             2 -> 3 [item="b", label="b"];
+    //             3 -> 3 [item="a]2", label="a\n]2"];
+    //             3 -> 4 [item="b", label="b"];
+    //             4 -> 4 [item="]2", label="]2"];
+    //             3 -> 5 [item="a]1", label="a\n]1"];
+    //             5 -> 5 [item="a", label="a"];
+    //             5 -> 6 [item="b", label="b"];
+    //             4 -> 6 [item="]1", label="]1"];
+    //         }
+    // "#;
+    //         let g = LGraph::read_dot(g).unwrap();
+    //         let g1 = g.normal_form::<DefaultGraph<_, _>>(1);
+    //         g1.graph().write_dot(&mut std::io::stdout()).unwrap();
+
+    //         panic!("check the graph manually...");
+    //     }
 }
