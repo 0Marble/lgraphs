@@ -247,6 +247,9 @@ where
                     if mid_begin_node == mid_end_node {
                         continue;
                     }
+                    if !self.is_subpath_balanced(mid_begin_node_index, mid_end_node_index) {
+                        continue;
+                    }
 
                     let right_node_repeats = node_repeats.get(mid_end_node).unwrap();
                     if right_node_repeats.len() == 1 {
@@ -254,43 +257,31 @@ where
                     }
 
                     let mut cur_d = 0;
-
-                    let mut prev_k = None;
-                    let mut prev_m = None;
                     for k in left_node_repeats.iter().rev() {
                         let k = *k;
                         if k >= mid_begin_node_index {
                             continue;
                         }
+                        if self.is_subpath_balanced(k, mid_begin_node_index) {
+                            continue;
+                        }
 
                         let kth_mem = mem.nth_node(k).unwrap();
-                        if let Some(prev_k) = prev_k.as_mut() {
-                            let prev_kth_mem = mem.nth_node(*prev_k).unwrap();
-                            if prev_kth_mem.brackets() == kth_mem.brackets() {
-                                *prev_k = k;
-                                continue;
-                            }
-                        }
-                        prev_k = Some(k);
 
                         for m in right_node_repeats {
                             let m = *m;
                             if m <= mid_end_node_index {
                                 continue;
                             }
+                            if self.is_subpath_balanced(mid_end_node_index, m) {
+                                continue;
+                            }
 
                             let mth_mem = mem.nth_node(m).unwrap();
-                            if let Some(prev_m) = prev_m.as_mut() {
-                                let prev_mth_mem = mem.nth_node(*prev_m).unwrap();
 
-                                if prev_mth_mem.brackets() == mth_mem.brackets() {
-                                    *prev_m = m;
-                                    continue;
-                                }
-                            }
-                            prev_m = Some(m);
-
-                            if mth_mem.brackets() == kth_mem.brackets() {
+                            if mth_mem.brackets() == kth_mem.brackets()
+                                && self.is_subpath_balanced(k, m)
+                            {
                                 cur_d += 1;
                                 break;
                             }
@@ -421,7 +412,9 @@ where
 
                             let mth_mem = mem.nth_node(m).unwrap();
 
-                            if mth_mem.brackets() == kth_mem.brackets() {
+                            if mth_mem.brackets() == kth_mem.brackets()
+                                && self.is_subpath_balanced(k, m)
+                            {
                                 res.push((
                                     (0, k),
                                     (k, mid_begin_node_index),
@@ -564,6 +557,14 @@ mod tests {
             Path::from_str("0-[0->0->0->0->1-]0->1->2-[0->2-[0->2->3-]0->3->3-]0->4->3").unwrap();
         // (0)-[0->(0)->0->0->(1)-]0->(1) -> (2)-[0->(2)-[0->(2)->(3)-]0->(3)->3-]0->4->(3)
         let loops = t.paired_loops();
+        for ((t11, t12), (t21, t22), (t31, t32), (t41, t42), (t51, t52)) in loops {
+            println!("t1: {}", t.subpath(t11, t12).unwrap());
+            println!("t2: {}", t.subpath(t21, t22).unwrap());
+            println!("t3: {}", t.subpath(t31, t32).unwrap());
+            println!("t4: {}", t.subpath(t41, t42).unwrap());
+            println!("t5: {}", t.subpath(t51, t52).unwrap());
+            println!()
+        }
         panic!();
     }
 
