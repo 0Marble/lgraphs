@@ -5,6 +5,7 @@
 /fonts
 /images
 /test.sh
+/.vscode
 
 /text/*
 !/text/graphs
