@@ -1,6 +1,7 @@
 digraph {
         node [shape=circle];
         Q0 [style=invisible, height=0, width=0, fixedsize=true];
+        rankdir = "LR";
 
         "1{}" [start=true];
         Q0 -> "1{}";

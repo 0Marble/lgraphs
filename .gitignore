@@ -9,6 +9,7 @@
 /text/*
 !/text/graphs
 /text/graphs/*
+!/text/src
 !/text/images
 /text/images/*
 !/text/main.tex

@@ -822,19 +822,3 @@ impl DotConvertable for Path<Memory<usize>, LGraphLetter<char>> {
         writeln!(w, "}}")
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn path() {
-        let t = Path::from_str("0-[0->0->1-]0->1").unwrap();
-        t.write_dot(&mut std::io::stdout(), true).unwrap();
-
-        let t = Path::from_str("0-[0->0-[0->0->1-]0->1-]0->1").unwrap();
-        t.write_dot(&mut std::io::stdout(), true).unwrap();
-
-        panic!()
-    }
-}

@@ -228,7 +228,7 @@ where
 mod tests {
     use std::{collections::HashSet, str::FromStr};
 
-    use crate::{graph::default_graph::DefaultGraph, io::DotConvertable};
+    use crate::io::DotConvertable;
 
     use super::*;
 

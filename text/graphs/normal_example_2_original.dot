@@ -1,11 +1,12 @@
 digraph {
     node [shape=circle];
+    rankdir = "LR";
     Q0 [style=invisible, height=0, width=0, fixedsize=true];
 
     1 [start=true];
     Q0 -> 1;
 
-    6 [end=true];
+    6 [end=true, shape=doublecircle];
 
     1 -> 2 [item="[1", label="[1"];
     2 -> 2 [item="a[2", label="a\n[2"];

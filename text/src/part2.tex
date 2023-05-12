@@ -1,0 +1,223 @@
+\chapter{Описание алгоритмов} \label{chapter2} 
+
+\section{Построение ядра}
+Для построения ядра нам понадобются некоторые факты, доказанные в \cite{stan1}:
+
+\begin{theorem}
+    \label{canon_length_limit_theorem}
+    Пусть $w$, $d$ -- неотриательные целые. Пусть последовательность скобок $P : \mu(P)=\varepsilon$, $depth(P) \leq d$, $width(P) \leq w$. 
+    Тогда длина $P$ ограниченна сверху числом $g_{w,d}$, где 
+    \begin{enumerate}
+        \item $g_{w,1} = 2w$;
+        \item $g_{w,d} = (g_{w,d-1} + 2)w$ .
+    \end{enumerate}
+\end{theorem}
+\begin{lemma}
+    \label{wd_upper_limit_lemma}
+    Пусть $m$ -- число вершин L-графа. Тогда, глубина скобочного следа $(w,d)$-канона ограничена сверху числом $(d+1)m^2$, ширина ограничена $(d+1)m$.
+\end{lemma}
+
+\subsection*{Алгоритм генерации ядра}
+
+\begin{algorithmic}
+    \Function{CoreRec}{$G$, $w_0$, $maxDepth$, $T$}
+        \State {$q \gets end(T)$}
+        \State {$paths \gets \emptyset$}
+        \If {$end(T) \in Final(G) \wedge \mu(\iota(T)) = \varepsilon$}
+            \State {$paths \gets paths \cup T$}
+        \EndIf
+
+        \ForAll{$\pi \in Edges(G) : beg(\pi) = q$}
+            \State {$T_1 \gets T \pi$}
+
+            \If {$\iota(T_1)$ -- не префикс пути в $L_p$}
+                continue
+            \ElsIf {$depth(\iota(T_1)) > maxDepth$}
+                continue
+            \ElsIf {$\text{параметр } w \text{ маршрута } T_1 > w_0$} 
+                continue
+            \EndIf
+            
+            \State {$paths \gets paths \cup \Call{CoreRec}{G, w_0, maxDepth, T_1}$}
+        \EndFor
+
+        \State \Return $paths$
+    \EndFunction
+    \\
+    \Function{Core}{$G$, $w$, $d$}
+        \State {$m \gets$ количество вершин в $G$ }
+        \State {$q_0 \gets Init(G)$}
+        \Comment {В детременированном L-графе начальная вершина только одна}
+        \State {$D \gets \emptyset$}
+        \ForAll{$T \in \Call{CoreRec}{G, w, (d+1)m^2, \text{пустой путь из } q_0}$}
+            \If{$T$ -- $(w,d)$-канон}
+                \State {$D \gets D \cup path$}
+            \EndIf
+        \EndFor
+        \State \Return $D$
+    \EndFunction
+\end{algorithmic}
+
+\begin{theorem}
+    Алгоритм генерации ядра корректен.
+\end{theorem}
+
+\begin{proof}
+    Требуется сгенерировать $Core(w_0, d_0)$ L-графа $G$. 
+    Пусть нам дано множество $D_0$, содеражащее все успешные пути, 
+    с глубиной скобочного следа, ограниченной сверху $(d_0+1)m^2 = maxDepth$, 
+    и параметром $w$, ограниченным сверху $w_0$. 
+    $D_0$ -- конечное множество, по теореме \ref{canon_length_limit_theorem}.
+    Тогда, по лемме \ref{wd_upper_limit_lemma} можно просто отобрать $(w,d)$-каноны из этого множества перебором, 
+    и получить ядро. 
+    Это и делает функция $Core(G, w, d)$, поэтому требуется доказать только то, 
+    что множество $D = CoreRec(G, w_0, (d+1)m^2, q_0)$ равно множеству $D_0$, и что $D$ получается за конечное время.
+
+    Пусть путь $T \in D$. В цикле есть проверка $depth(\iota(T)) \leq maxDepth$, проверка параметра $w$, и проверка на успешность пути.
+    Это значит, что $T \in D_0$.
+
+    Теперь, пусть $T_0 \in D_0$, но $T_0 \notin D$, то есть либо $T_0$, либо его префикс $T_1$, был отброшен в ходе проверок.
+    Если сам $T_0$ отброшен, то это очевидно значит, что он не принадлежит $D_0$.
+    Если отброшен был $T_1$, то это могло произойти по трем причинам:
+    \begin{enumerate}
+        \item В $T_1$ слишком много закрывающих скобок, но это значит, что и $T_0$ не может быть успешным;
+        \item $depth(\iota(T_1)) \ge maxDepth$, но из определения функции $depth$ следует, что $depth(T_0) \geq depth(T_1) \ge maxDepth$;
+        \item Параметр $w$ $T_1$ превышает $w_0$. Это противоречит определению $(w,d)$-канона.
+    \end{enumerate}
+    Это значит, что $T_0 \in D$. $D = D_0$.
+
+    Для доказательства завершаемости алгоритма можно заметить следующее:
+    \begin{enumerate}
+        \item Множество дуг в L-графе конечно;
+        \item Маршруты, которые не подходят по $w$ или глубине отбрасываются сразу, и маршруты, чьими префиксами они являются, не рассматриваются;
+        \item При каждом вызове $CoreRec$ получает разные аргументы $path$, это значит, что каждый путь генерируется только один раз.
+    \end{enumerate}
+
+    Итого, функция $CoreRec$ верна, завершается за конечное время, а значит и весь алгоритм корректен. \qed
+\end{proof}
+
+\section{Нормальная форма}
+
+\begin{definition}
+    Нормальная форма L-графа $G$ -- L-граф $G'$, эквивалентный $G$, в путях которого отсутсвуют псевдоциклы.
+\end{definition}
+
+\subsection*{Алгоритм генерации нормальной формы}
+\begin{algorithmic}
+    \Function{MemGraph}{paths}
+        \State {$E \gets \bigcup_{T \in paths} \bigcup_{\pi \in Edges(Mem(T))} \pi $}
+        \State Очевидно, что по информации, хранящейся в дугах $E$, можно однозначно построить граф $G$.
+        \State \Return G
+    \EndFunction
+    
+    \\
+    \Require{$T_l, T_r$ в форме памяти}
+    \Function{AddLoops}{$G', T_l, T_r$}
+        \State Добавим каждую дугу из $T_l$ в $G'$, но конечную вершину переименуем в начальную.
+        \State То же самое для $T_r$, но теперь переиминуем начальную в конечную, а конечную не переименовываем.
+
+        \State \Return $G'$
+    \EndFunction
+    \\
+    \Require{$d_0 \geq 1$}
+    \Function{NormalForm}{$G$, $d_0$}
+        \State {$G_0 \gets MemGraph(Core(1, d_0))$}
+        \State {$G' \gets G_0$}
+
+        \ForAll{$T \in Core(G, 1, d_0+1) \setminus Core(G, 1, d_0)$}
+            \ForAll {$T_1 T_2 T_3 T_4 T_5 = T$, $\langle T_2, T_3, T_4\rangle$ -- простое гнездо, $T_1 T_3 T_5 \in Core(G, 1, d_0)$}
+                \State $T_l \gets Mem(T_1 T_2)$
+                \State $T_r \gets Mem(T_1 T_2 T_3 T_4)$
+                \If{$beg(T_l) \in Nodes(G_0) \wedge end(T_r) \in Nodes(G_0)$} 
+                    \State{$G' \gets \Call{AddLoops}{G', T_l, T_r}$}
+                \EndIf
+            \EndFor
+        \EndFor
+
+        \State \Return {$G'$}
+    \EndFunction
+\end{algorithmic}
+
+\begin{theorem}
+    В путях $G' = NormalForm(G, d_0)$ нет псевдоциклов.
+\end{theorem}
+
+\begin{proof}
+    Достаточно рассмотреть только пути из $Core(G',w,1)$, так как если путь из $Core(G',w,0)$, в нем очевидно 
+    по построению не может быть псевдоциклов, а из путей $Core(G',w,d), d > 1$, всегда можно убрать
+    некоторые парные циклы, не повлияв на наличие псевдоциклов.
+
+    Пусть $T = T_1 T_2 T_3 T_4 T_5 \in Core(G',w,1)$, $\langle T_2, T_3, T_4 \rangle$ -- гнездо с псевдоциклом,
+    в $T_1$ и $T_5$ нет других циклов,
+    для определенности, пусть $T_2$ -- цикл.
+    По построению, $T_2$ и $T_4$ не могли быть добавлены в $G'$ одним путем, значит 
+    $\exists T' = T_a T_b T_3 T_4 T_5$, $\langle T_b, T_3, T_4 \rangle$ -- гнездо, $T_b$ -- не цикл,
+    $\mu(\iota(T_a)) = \alpha$,
+    $\mu(\iota(T_b)) = \mu(\iota(T_2)) = \beta$,
+    в $T_a T_b$ нет других циклов.
+    Это значит, что $beg(T_3) = \langle q, \alpha \beta \rangle$, но $end(T_1) = end(T_2) = beg(T_3)$,
+    значит $\mu(\iota(T_1)) = \alpha \beta$, и $\exists T'' = T_1 T_3 T_4 T_5$.
+    Таким образом, $T_2$ -- нейтральный маршрут, что пртиворечит определению псевдоцикла, 
+    значит, в путях $G'$ не может быть псевдоциклов. $\qed$ 
+\end{proof}
+
+\begin{theorem}
+    $G' = NormalForm(G, d_0)$ эквивалентен $G$.
+\end{theorem}
+
+\begin{proof}
+    Докажем, что язык $L' = L(G')$ эквивалентен $L = L(G)$.
+    
+    Сначала докажем, что $L \subseteq L'$.
+    $\forall T : \omega(T) \in L \implies \exists w, d : T \in Core(G, w, d)$.
+    Рассмотрим три случая, для путей принадлежащих ядрам $Core(1, d), d \geq 0$:
+
+    Для $T \in Core(1, d_0)$ очевидно, что $\omega(T) \in L'$, так как все пути $Core(1, d_0)$ были явно добавлены в граф $G_0$.
+
+    Пусть $T = T_1 T_2 T_3 T_4 T_5 \in Core(1, d_0 + 1) \setminus Core(1, d_0)$, 
+    $\langle T_2, T_3, T_4 \rangle$ -- простое гнездо, $(T_2, T_4)$ -- парные циклы,
+    $T_1 = T_{1, 0} T_{1, 1} \cdots T_{1, d_0}$,
+    $T_5 = T_{5, d_0} \cdots T_{5, 1}, T_{5, 0}$,
+    $(T_{1, i}, T_{5, i}), i = 1 \dots d_0$ -- парные.
+    Будем считать, что в $T_{1,0}$ и $T_{5,0}$ нет других парных циклов,
+    потому что их можно отбросить, не повлияв на то, что $T \in Core(1, d_0+1)$. 
+    Нужно доказать, что функция $AddLoops$ присоеденила цикл $T_2$ к $end(Mem(T_1))$, 
+    и $T_4$ к $end(Mem(T_1 T_2 T_3 T_4))$.
+    Очевидно, что $\exists T_0 = T_1 T_3 T_5 \in Core(1, d_0)$, то есть $Mem(T_0)$ -- путь в $G_0$. 
+    $end(Mem(T_1)) \in Nodes(G_0)$, $end(Mem(T_1 T_2 T_3 T_4)) = end(Mem(T_1 T_3)) \in Nodes(G_0)$.
+
+    Более общий случай: $T = T_1 T_2 T_3 T_4 T_5 T_6 T_7\in Core(1, d), d > d_0 + 1$.
+    Будем считать, что пути $T' = T_1 T_2 T_4 T_6 T_7$ и $T'' = T_1 T_3 T_4 T_5 T_7 \in Core(1, d_0+1)$
+    (если это не так, $T$ всегда можно аналогичным образом разбить на еще более простые пути $T^i$,
+    каждый из которых будет в $Core(1, d_0+1)$).
+    Тогда очевидно, что парные циклы $(T_2,T_6), (T_3,T_5)$ были добавлены в $G'$, и значит $T$ -- путь в $G'$. 
+
+    По работе функции $MemGraph$ очевидно, что при $w \neq 1$ все пути так же будут успешными.
+    Это значит, что $L \subseteq L'$.
+
+    Теперь докажем, что $L' \subseteq L$. 
+    Очевидно, что пути из $Core(G', w, 0)$ однозначно соответсвуют путям из $Core(G, w, d_0)$. 
+    Пусть $T = T_1 T_2 T_3 T_4 T_5 \in Core(G', w, 1)$, 
+    $\langle T_2 T_3 T_4 \rangle$ -- простое гнездо, $(T_2, T_4)$ -- парные циклы.
+    Будем считать, что в $T_1$ и $T_5$ нет других парных циклов,
+    потому что их можно отбросить, не повлияв на то, что $T \in Core(G',w,1)$. 
+    Попобуем сконструировать путь $T' = T_1' T_2' T_3' T_4' T_5', Mem(T') = T$, 
+    $Mem(T_1') = T_1, Mem(T_1', T_2') = T_2$ и т.д., $\omega(T') \in L$.
+    Во первых, в $Core(G, w, d_0 + 1)$ есть путь $T'' = T_1' T_2' T_x T_4' T_y$, $\mu(\iota(T_x)) = \varepsilon$, 
+    который добавил в $G'$ парные циклы $T_2$ и $T_4$.
+    Это значит, что память $end(T_1)$ можно продолжить маршрутом $T_2'$, 
+    а $\langle end(T_x), \mu(\iota(T_1' T_2')) \rangle$ можно продолжить маршрутом $T_4'$.
+    Во вторых, в $Core(G, w, d_0)$ очевидно существует путь $T''' = T_1' T_3' T_5'$, $\mu(\iota(T_3')) = \varepsilon$, 
+    то есть память $\langle end(T_3'), \mu(\iota(T_1')) \rangle$ можно продолжить маршрутом  $T_5'$. 
+    $T_3'$ -- нейтральный маршрут, то есть им можно продолжить любую память вершины $beg(T_3')$, 
+    $end(T_1') = beg(T_3')$, $end(T_3') = beg(T_4') = end(T_x) = end(T_4')$, а значит 
+    $\exists T' = T_1' T_2' T_3' T_4' T_5'$ -- путь в $Core(G, w, d_0 + 1)$, 
+    соответсвующий $T$. Аналогично можно доказать, что $T \in Core(G', w, d) \implies \omega(T) \in L, \forall d \geq 1$.
+
+    Таким образом, $L' = L$, то есть $G'$ эквивалентен $G$.
+    \qed 
+    
+
+\end{proof}
+
+\clearpage
