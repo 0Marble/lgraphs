@@ -39,6 +39,14 @@ L-графом назовем шестерку $\langle V,E,I,F,\Sigma,P\rangle$
 \end{itemize}
 Все множества конечные.
 
+\begin{figure}
+    \centering
+    \includegraphics[scale=0.5]{images/graph1.dot.png}
+    \caption{L-граф}
+    \label{lgraph1-expample-image}
+    
+\end{figure}
+
 Для дуги $\pi = \langle s, a, b, t \rangle$ введем дополнительные обозначения:
 \begin{itemize}
     \item $beg(\pi) = s$ -- начальная вершина дуги;
@@ -100,7 +108,6 @@ $Edges(T) = \left\{ \pi_i \right\}$, $Nodes(T) = \left\{ p_i \right\}$.
     
 \end{proof}
 
-
 \section{Детерминированность}
 Определим функцию \begin{eqnarray*}
     direct(\pi) & = & \left\{ a \in \Sigma \mid \exists T_1 \pi T_2 - \text{успешный путь}, \omega(\pi T_2) = a \alpha, \alpha \in \Sigma^* \right\} \\
@@ -110,6 +117,17 @@ L-граф $G$ называется детирминированным, если
 $\forall \pi_1, \pi_2 \in Edges(G), \pi_1 \neq \pi_2, beg(\pi_1) = beg(\pi_2)$, 
 из $direct(\pi_1) \cap direct(\pi_2) = \emptyset$ следует, что 
 $\iota(\pi_1), \iota(\pi_2) \in P_] \cap \iota(\pi_1) \neq \iota(\pi_2)$. 
+
+\begin{figure}[h]
+    \begin{minipage}[h]{0.49\linewidth}
+      \center{\includegraphics[scale=0.5]{images/example_determined.dot.png} \caption{Детерминированный L-граф}}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[h]{0.49\linewidth}
+      \center{\includegraphics[scale=0.5]{images/example_nondetermined.dot.png} \caption{Недетерминированный L-граф}}
+    \end{minipage}
+    \label{det_vs_nondet}  
+  \end{figure}
 
 Неформально это можно понимать как то, что, находясь в любой вершине, 
 по верхней скобке в стеке и следующей букве всегда можно однозначно определить, по какой дуге идти дальше.
@@ -162,5 +180,17 @@ $(w,d)$-каноном будем называть успешный путь $T$
 количество вложенных парных циклов не превышает $d$.  
 
 Одно важное свойство ядра: $w_1 \leq w_2, d_1 \leq d_2 \implies Core(w_1, d_1) \subseteq Core(w_2, d_2)$
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[scale=.4]{images/graph1_path0.dot.png} (a)\\
+    \includegraphics[scale=.4]{images/graph1_path3.dot.png} (b)\\
+    \includegraphics[scale=.4]{images/graph1_path1.dot.png} (c)\\
+    \includegraphics[scale=.4]{images/graph1_path4.dot.png} (d)\\
+    
+    \caption{Пути из различных ядер графа \ref{lgraph1-expample-image}. (a) $\in Core(0,0)$, (b) $\in Core(1,0)$, (c),(d) $\in Core(1,1)$}
+    \label{lgraph1-core-example}
+\end{figure}
+
 
 \clearpage

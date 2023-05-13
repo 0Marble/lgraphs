@@ -1,0 +1,27 @@
+digraph {
+	node [shape=circle];
+	Q0 [style=invisible, height=0, width=0, fixedsize=true];
+	Q1 [style=invisible, height=0, width=0, fixedsize=true];
+	graph [rankdir="LR"];
+	1 [label=1];
+	0 [label=1];
+	2 [label=2];
+	7 [label=3];
+	8 [label=3];
+	5 [label=3];
+	6 [label=3];
+	4 [label=2];
+	3 [label=2];
+
+	Q0 -> 0;
+
+	8 -> Q1;
+	0 -> 1  [item="a", label="a"];
+	1 -> 2  [item="b[0", label="b\n[0"];
+	2 -> 3  [item="b[0", label="b\n[0"];
+	3 -> 4  [item="b[0", label="b\n[0"];
+	4 -> 5  [item="c", label="c"];
+	5 -> 6  [item="b]0", label="b\n]0"];
+	6 -> 7  [item="b]0", label="b\n]0"];
+	7 -> 8  [item="b]0", label="b\n]0"];
+}

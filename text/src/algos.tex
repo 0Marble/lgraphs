@@ -128,8 +128,8 @@
 
         \ForAll{$T \in Core(G, 1, d_0+1) \setminus Core(G, 1, d_0)$}
             \ForAll {$T_1 T_2 T_3 T_4 T_5 = T$, $\langle T_2, T_3, T_4\rangle$ -- простое гнездо, $T_1 T_3 T_5 \in Core(G, 1, d_0)$}
-                \State $T_l \gets Mem(T_1 T_2)$
-                \State $T_r \gets Mem(T_1 T_2 T_3 T_4)$
+                \State $T_l \gets Mem(T_1, T_2)$
+                \State $T_r \gets Mem(T_1 T_2 T_3, T_4)$
                 \If{$beg(T_l) \in Nodes(G_0) \wedge end(T_r) \in Nodes(G_0)$} 
                     \State{$G' \gets \Call{AddLoops}{G', T_l, T_r}$}
                 \EndIf
