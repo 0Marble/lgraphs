@@ -44,6 +44,31 @@ where
     fn has_edge(&self, edge: &Edge<N, L>) -> bool {
         self.edges().any(|e| e == edge)
     }
+    fn to_dot(&self) -> String
+    where
+        N: ToString,
+        L: ToString,
+    {
+        let mut s = "digraph {\n".to_string();
+        s+="\tQ0 [style=invisible,height=0,width=0,fixedsize=true];\n\tnode [shape=circle];\n\tgraph [rankdir=\"LR\"];\n";
+
+        s += &format!("\tQ0 -> \"{}\";\n", self.start_node().to_string());
+        for edge in self.edges() {
+            s += &format!(
+                "\t\"{}\" -> \"{}\" [label=\"{}\"];\n",
+                edge.beg().to_string(),
+                edge.end().to_string(),
+                edge.letter().to_string()
+            );
+        }
+
+        for node in self.end_nodes() {
+            s += &format!("\t\"{}\" [shape=doublecircle];\n", node.to_string());
+        }
+
+        s.push('}');
+        s
+    }
 }
 
 pub trait ModifyableGraph<N, L>: Graph<N, L>

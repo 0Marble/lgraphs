@@ -65,6 +65,21 @@ where
     }
 }
 
+impl<G, N, L> ModifyableGraph<N, LGraphLetter<L>> for LGraph<G, N, L>
+where
+    G: ModifyableGraph<N, LGraphLetter<L>>,
+    N: Node,
+    L: Letter,
+{
+    fn new_empty(start_node: N, end_nodes: impl IntoIterator<Item = N>) -> Self {
+        LGraph::new(G::new_empty(start_node, end_nodes))
+    }
+
+    fn add_edge(&mut self, edge: crate::path::Edge<N, LGraphLetter<L>>) {
+        self.graph.add_edge(edge)
+    }
+}
+
 impl<G, N, L> LGraph<G, N, L>
 where
     G: Graph<N, LGraphLetter<L>>,
@@ -226,34 +241,18 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashSet, str::FromStr};
+    use std::{assert_eq, collections::HashSet, println, str::FromStr};
 
-    use crate::io::DotConvertable;
+    use crate::graph::default_graph::DefaultGraph;
 
     use super::*;
 
     #[test]
     fn core() {
-        let g = r#"
-        digraph {
-            node [shape=circle]
-            Q0 [style=invisible, height=0, width=0, fixedsize=true]
-            Q0 -> 1
-        
-            1 [start=true]
-            3 [end=true,shape=doublecircle]
-        
-            1 -> 1 [item="a[1", label="a\n[1"]
-            1 -> 2 [item="d[2", label="d\n[2"]
-            2 -> 2 [item="b]2", label="b\n]2"]
-            2 -> 2 [item="c[3", label="c\n[3"]
-            2 -> 3 [item="d]3", label="d\n]3"]
-            3 -> 3 [item="a]1", label="a\n]1"]
-        }
-        "#;
-        let t1 = "1-d-[2->2-b-]2->2-c-[3->2-d-]3->3";
-        let t2 = "1-a-[1->1-d-[2->2-b-]2->2-c-[3->2-d-]3->3-a-]1->3";
-        let t3 = "1-a-[1->1-a-[1->1-d-[2->2-b-]2->2-c-[3->2-d-]3->3-a-]1->3-a-]1->3";
+        let g = "-> 1; 1-a[1->1; 1-d[2->2; 2-b]2->2; 2-c[3->2; 2-d]3->3; 3-a]1->3; 3->;";
+        let t1 = "1-d[2->2-b]2->2-c[3->2-d]3->3";
+        let t2 = "1-a[1->1-d[2->2-b]2->2-c[3->2-d]3->3-a]1->3";
+        let t3 = "1-a[1->1-a[1->1-d[2->2-b]2->2-c[3->2-d]3->3-a]1->3-a]1->3";
 
         let core00 = HashSet::from([Path::from_str(t1).unwrap()]);
         let core11 = HashSet::from([Path::from_str(t1).unwrap(), Path::from_str(t2).unwrap()]);
@@ -262,7 +261,7 @@ mod tests {
             Path::from_str(t2).unwrap(),
             Path::from_str(t3).unwrap(),
         ]);
-        let g = LGraph::read_dot(g).unwrap();
+        let g: LGraph<DefaultGraph<_, _>, _, _> = LGraph::from_str(g).unwrap();
         assert_eq!(
             g.core(0, 0)
                 .inspect(|t| println!("core00: {}", t))
@@ -283,55 +282,17 @@ mod tests {
         );
     }
 
-    //     #[test]
-    //     fn normal_form() {
-    //         let g = r#"
-    //         digraph {
-    //             node [shape=circle]
-    //             Q0 [style=invisible, height=0, width=0, fixedsize=true]
-    //             Q0 -> 1
+    #[test]
+    fn normal_form() {
+        let g = "->1; 1-a[1->1; 1-d[2->2; 2-b]2->2; 2-c[3->2; 2-d]3->3; 3-a]1->3; 3->;";
+        let g: LGraph<DefaultGraph<usize, _>, _, _> = LGraph::from_str(g).unwrap();
+        let g1 = g.normal_form::<DefaultGraph<_, _>>(1);
+        println!("{}", g1);
+        assert_eq!(g1, LGraph::from_str("->1{};3{}->;1{}-d[2->2{2};2{1, 2}-b]2->2{1};3{1}-a]1->3{};2{1, 3}-d]3->3{1};2{3}-d]3->3{};1{}-a[1->1{1};1{1}-d[2->2{1, 2};2{}-c[3->2{3};2{1}-c[3->2{1, 3};2{2}-b]2->2{};1{}-a[1->1{};3{}-a]1->3{};1{1}-a[1->1{1};3{1}-a]1->3{1};").unwrap());
 
-    //             1 [start=true]
-    //             3 [end=true,shape=doublecircle]
-
-    //             1 -> 1 [item="a[1", label="a\n[1"]
-    //             1 -> 2 [item="d[2", label="d\n[2"]
-    //             2 -> 2 [item="b]2", label="b\n]2"]
-    //             2 -> 2 [item="c[3", label="c\n[3"]
-    //             2 -> 3 [item="d]3", label="d\n]3"]
-    //             3 -> 3 [item="a]1", label="a\n]1"]
-    //         }
-    //         "#;
-    //         let g = LGraph::read_dot(g).unwrap();
-    //         let g1 = g.normal_form::<DefaultGraph<_, _>>(1);
-    //         g1.graph().write_dot(&mut std::io::stdout()).unwrap();
-
-    //         let g = r#"
-    //         digraph {
-    //             node [shape=circle];
-    //             Q0 [style=invisible, height=0, width=0, fixedsize=true];
-
-    //             1 [start=true];
-    //             Q0 -> 1;
-
-    //             6 [end=true];
-
-    //             1 -> 2 [item="[1", label="[1"];
-    //             2 -> 2 [item="a[2", label="a\n[2"];
-    //             2 -> 3 [item="b", label="b"];
-    //             3 -> 3 [item="a]2", label="a\n]2"];
-    //             3 -> 4 [item="b", label="b"];
-    //             4 -> 4 [item="]2", label="]2"];
-    //             3 -> 5 [item="a]1", label="a\n]1"];
-    //             5 -> 5 [item="a", label="a"];
-    //             5 -> 6 [item="b", label="b"];
-    //             4 -> 6 [item="]1", label="]1"];
-    //         }
-    // "#;
-    //         let g = LGraph::read_dot(g).unwrap();
-    //         let g1 = g.normal_form::<DefaultGraph<_, _>>(1);
-    //         g1.graph().write_dot(&mut std::io::stdout()).unwrap();
-
-    //         panic!("check the graph manually...");
-    //     }
+        let g = "->1; 6->; 1-[1->2; 2-a[2->2; 2-b->3; 3-a]2->3; 3-b->4; 4-]2->4; 3-a]1->5; 5-a->5; 5-b->6; 4-]1->6;";
+        let g: LGraph<DefaultGraph<usize, _>, _, _> = LGraph::from_str(g).unwrap();
+        let g1 = g.normal_form::<DefaultGraph<_, _>>(1);
+        assert_eq!(g1, LGraph::from_str("->1{};6{}->;5{}-a->5{};3{1}-a]1->5{};3{1, 2, 2}-a]2->3{1, 2};1{}-[1->2{1};4{1}-]1->6{};2{1}-a[2->2{1, 2};5{}-b->6{};3{1, 2}-b->4{1, 2};2{1}-b->3{1};3{1, 2}-a]2->3{1};2{1, 2}-a[2->2{1, 2, 2};3{1}-b->4{1};2{1, 2, 2}-b->3{1, 2, 2};2{1, 2}-b->3{1, 2};4{1, 2}-]2->4{1};2{1}-a[2->2{1};4{1}-]2->4{1};2{1, 2}-a[2->2{1, 2};4{1, 2}-]2->4{1, 2};3{1}-a]2->3{1};3{1, 2}-a]2->3{1, 2};2{1, 2, 2}-a[2->2{1, 2, 2};3{1, 2, 2}-a]2->3{1, 2, 2};").unwrap());
+    }
 }

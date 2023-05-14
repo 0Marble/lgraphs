@@ -16,6 +16,43 @@ where
     end_nodes: HashSet<N>,
 }
 
+impl<N, L> PartialEq for DefaultGraph<N, L>
+where
+    N: Node + PartialEq,
+    L: Letter + PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        if self.start_node != other.start_node
+            || self.end_nodes != other.end_nodes
+            || self.edges.len() != other.edges.len()
+        {
+            return false;
+        }
+
+        let mut accounted = HashSet::new();
+        for edge in &self.edges {
+            let mut found = false;
+
+            for (i, e) in other.edges.iter().enumerate() {
+                if accounted.contains(&i) {
+                    continue;
+                }
+                if e == edge {
+                    accounted.insert(i);
+                    found = true;
+                    break;
+                }
+            }
+
+            if !found {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
 impl<N, L> ModifyableGraph<N, L> for DefaultGraph<N, L>
 where
     N: Node,

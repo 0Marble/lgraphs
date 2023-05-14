@@ -837,7 +837,7 @@ mod tests {
             1,
             LGraphLetter::new(Some('a'), Some(Bracket::new(0, false))),
         ));
-        assert_eq!(t, Path::from_str("0-a-]0->1").unwrap());
+        assert_eq!(t, Path::from_str("0-a]0->1").unwrap());
 
         t = Path::new(0);
         t.add_edge(Edge::new(
@@ -850,7 +850,7 @@ mod tests {
             2,
             LGraphLetter::new(Some('b'), Some(Bracket::new(1, false))),
         ));
-        assert_eq!(t, Path::from_str("0-a-[0->1-b-]1->2").unwrap());
+        assert_eq!(t, Path::from_str("0-a[0->1-b]1->2").unwrap());
 
         t = Path::new(10);
         t.add_edge(Edge::new(
@@ -858,7 +858,7 @@ mod tests {
             20,
             LGraphLetter::new(Some('a'), Some(Bracket::new(3124, true))),
         ));
-        assert_eq!(t, Path::from_str("10-a-[3124->20").unwrap());
+        assert_eq!(t, Path::from_str("10-a[3124->20").unwrap());
     }
 
     #[test]
