@@ -57,7 +57,7 @@ where
         s += &format!("\tQ0 -> \"{}\";\n", self.start_node().to_string());
         for edge in self.edges() {
             s += &format!(
-                "\t\"{}\" -> \"{}\" [label=\"{}\", color=red];\n",
+                "\t\"{}\" -> \"{}\" [label=\"{}\", fontcolor=red];\n",
                 edge.beg().to_string(),
                 edge.end().to_string(),
                 edge.letter().to_string()

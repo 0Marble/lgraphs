@@ -1,0 +1,82 @@
+digraph UML {
+    GraphTrait [
+        color=blue,
+        label="Graph<N,L>",
+        shape=tab,
+    ];
+    ModifyableGraphTrait [
+        color=blue,
+        label="ModifyableGraph<N,L>",
+        shape=tab,
+    ];
+    NodeTrait [
+        color=blue,
+        label="Node",
+        shape=tab,
+    ];
+    LetterTrait [
+        color=blue,
+        label="Letter",
+        shape=tab,
+    ];
+
+    ModifyableGraphTrait -> GraphTrait [arrowhead=odiamond, color=green];
+
+    Bracket [
+        color=black,
+        label="Bracket",
+        shape=box,
+    ];
+    LGraphLetter [
+        color=black,
+        label="LGraphLetter<L>",
+        shape=box
+    ];
+    Memory [
+        color=black,
+        label="Memory<N>",
+        shape=box,
+    ];
+
+    EdgeStruct [
+        color=black,
+        label="Edge<N,L>",
+        shape=box,
+    ]
+
+    LGraphLetter -> Bracket [arrowhead=normal];
+    LGraphLetter -> LetterTrait [arrowhead=normal];
+    LGraphLetter -> LetterTrait [arrowhead=odiamond, color=green];
+    Memory -> NodeTrait [arrowhead=normal];
+    Memory -> NodeTrait [arrowhead=odiamond, color=green];
+    EdgeStruct -> NodeTrait [arrowhead=normal];
+    EdgeStruct -> LetterTrait [arrowhead=normal];
+
+    Path [
+        shape=box,
+        color=black,
+        label="Path<N,L>",
+    ];
+
+    Path -> EdgeStruct [arrowhead=normal];
+
+    LGraph [
+        shape=box,
+        color=black,
+        label="LGraph<N,L>"
+    ];
+
+    LGraph -> GraphTrait [arrowhead=odiamond, color=green, label=" "];
+    LGraph -> GraphTrait [arrowhead=normal, label=" "];
+
+    DefaultGraph [
+        shape=box,
+        color=black,
+        label="DefaultGraph<N,L>"
+    ];
+
+    DefaultGraph -> GraphTrait [arrowhead=odiamond, color=green];
+    DefaultGraph -> ModifyableGraphTrait [arrowhead=odiamond, color=green];
+    DefaultGraph -> NodeTrait [arrowhead=normal];
+    DefaultGraph -> EdgeStruct [arrowhead=normal];
+}

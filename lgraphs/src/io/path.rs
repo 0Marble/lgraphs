@@ -324,7 +324,7 @@ impl Display for Memory<usize> {
         for bracket in self.brackets().state() {
             write!(s, "{}, ", bracket)?;
         }
-        write!(f, "{{{}}}", s.trim_end_matches(", "))
+        write!(f, ",{{{}}}", s.trim_end_matches(", "))
     }
 }
 
@@ -362,7 +362,7 @@ where
         s += "\tQ0 -> 0;\n";
         for (i, edge) in self.edges().enumerate() {
             s += &format!(
-                "\t{} -> {} [label=\"{}\", color=red];\n",
+                "\t{} -> {} [label=\"{}\", fontcolor=red];\n",
                 i,
                 i + 1,
                 edge.letter().to_string()

@@ -18,15 +18,17 @@ where
 
     pub fn core11_no_letters_on_loops_reg(&self) -> bool {
         for t in self.core(1, 1) {
+            let mut had_letter = false;
             for (left, right) in t.simple_paired_loops() {
                 for i in left.0..left.1 {
                     if t.nth_edge(i).unwrap().item().is_some() {
-                        return false;
+                        had_letter = true;
+                        break;
                     }
                 }
 
                 for i in right.0..right.1 {
-                    if t.nth_edge(i).unwrap().item().is_some() {
+                    if t.nth_edge(i).unwrap().item().is_some() && had_letter {
                         return false;
                     }
                 }
