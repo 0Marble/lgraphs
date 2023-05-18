@@ -50,12 +50,14 @@ where
         L: ToString,
     {
         let mut s = "digraph {\n".to_string();
-        s+="\tQ0 [style=invisible,height=0,width=0,fixedsize=true];\n\tnode [shape=circle];\n\tgraph [rankdir=\"LR\"];\n";
+        s += "\tQ0 [style=invisible,height=0,width=0,fixedsize=true];\n";
+        s += "\tQ1 [style=invisible,height=0,width=0,fixedsize=true];\n";
+        s += "\tnode [shape=circle];\n\tgraph [rankdir=\"LR\"];\n";
 
         s += &format!("\tQ0 -> \"{}\";\n", self.start_node().to_string());
         for edge in self.edges() {
             s += &format!(
-                "\t\"{}\" -> \"{}\" [label=\"{}\"];\n",
+                "\t\"{}\" -> \"{}\" [label=\"{}\", color=red];\n",
                 edge.beg().to_string(),
                 edge.end().to_string(),
                 edge.letter().to_string()
@@ -63,7 +65,7 @@ where
         }
 
         for node in self.end_nodes() {
-            s += &format!("\t\"{}\" [shape=doublecircle];\n", node.to_string());
+            s += &format!("\t\"{}\"->Q1;\n", node.to_string());
         }
 
         s.push('}');

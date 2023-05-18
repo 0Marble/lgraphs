@@ -2,7 +2,7 @@ use std::{fmt::Display, str::FromStr, write, writeln};
 
 use crate::{
     graph::lgraph::LGraphLetter,
-    path::{Bracket, BracketStack, Edge, Memory, Path},
+    path::{Bracket, BracketStack, Edge, Letter, Memory, Node, Path},
 };
 
 #[derive(Debug)]
@@ -116,6 +116,8 @@ impl FromStr for LGraphLetter<char> {
         // A - letter -> B
         // A - '[' | ']' -> C
         // B - '[' | ']' -> C
+        // B - '|' -> B
+        // B - ',' -> B
         // B - end -> D
         // C - digit -> C
         // C - end -> D
@@ -167,6 +169,7 @@ impl FromStr for LGraphLetter<char> {
                         open = false;
                         state = State::C;
                     }
+                    '|' | ',' => {}
                     _ => Err(LGraphLetterParseError::ExpectedBrackets(i))?,
                 },
                 State::C => {
@@ -200,6 +203,10 @@ impl Display for LGraphLetter<char> {
         }
 
         if let Some(bracket) = self.bracket() {
+            if self.letter().is_some() {
+                write!(f, ",")?;
+            }
+
             write!(
                 f,
                 "{}{}",
@@ -334,5 +341,37 @@ impl Display for Path<usize, LGraphLetter<char>> {
         }
 
         Ok(())
+    }
+}
+
+impl<N, L> Path<N, L>
+where
+    N: Node + ToString,
+    L: Letter + ToString,
+{
+    pub fn to_dot(&self) -> String {
+        let mut s = "digraph {\n".to_string();
+        s += "\tQ0 [style=invisible,height=0,width=0,fixedsize=true];\n";
+        s += "\tQ1 [style=invisible,height=0,width=0,fixedsize=true];\n";
+        s += "\tnode [shape=circle];\n\tgraph [rankdir=\"LR\"];\n";
+
+        for (i, node) in self.nodes().enumerate() {
+            s += &format!("\t{} [label=\"{}\"]", i, node.to_string());
+        }
+
+        s += "\tQ0 -> 0;\n";
+        for (i, edge) in self.edges().enumerate() {
+            s += &format!(
+                "\t{} -> {} [label=\"{}\", color=red];\n",
+                i,
+                i + 1,
+                edge.letter().to_string()
+            );
+        }
+
+        s += &format!("\t{}->Q1;\n", self.len_in_nodes() - 1);
+
+        s.push('}');
+        s
     }
 }

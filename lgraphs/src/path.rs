@@ -345,23 +345,6 @@ where
     }
 
     pub fn paired_loops(&self) -> impl Iterator<Item = ((usize, usize), (usize, usize))> + '_ {
-        // let mut res = vec![];
-        // for t21 in 0..self.len_in_nodes() {
-        //     for t22 in t21 + 1..self.len_in_nodes() {
-        //         for t41 in t22 + 1..self.len_in_nodes() {
-        //             for t42 in t41 + 1..self.len_in_nodes() {
-        //                 if self.is_nest((t21, t22), (t41, t42))
-        //                     && self.nth_node(t21) == self.nth_node(t22)
-        //                     && self.nth_node(t41) == self.nth_node(t42)
-        //                 {
-        //                     res.push(((t21, t22), (t41, t42)));
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
-        // res.into_iter()
-
         let n = self.len_in_nodes();
         (0..n)
             .flat_map(move |t21| {
@@ -448,6 +431,14 @@ where
             }
         }
         true
+    }
+
+    #[inline]
+    pub fn simple_paired_loops(
+        &self,
+    ) -> impl Iterator<Item = ((usize, usize), (usize, usize))> + '_ {
+        self.paired_loops()
+            .filter(|(l, r)| self.is_simple_paired_loops(*l, *r))
     }
 }
 
