@@ -41,7 +41,7 @@ L-графом назовем шестерку $\langle V,E,I,F,\Sigma,P\rangle$
 
 \begin{figure}
     \centering
-    \includegraphics[scale=0.5]{images/graph1.dot.png}
+    \includesvg[scale=0.5]{images/graph1.dot.svg}
     \caption{L-граф}
     \label{lgraph1-expample-image}
     
@@ -120,11 +120,11 @@ $\iota(\pi_1), \iota(\pi_2) \in P_] \cap \iota(\pi_1) \neq \iota(\pi_2)$.
 
 \begin{figure}[h]
     \begin{minipage}[h]{0.49\linewidth}
-      \center{\includegraphics[scale=0.5]{images/example_determined.dot.png} \caption{Детерминированный L-граф}}
+      \center{\includesvg[scale=0.5]{images/example_determined.dot.svg} \caption{Детерминированный L-граф}}
     \end{minipage}
     \hfill
     \begin{minipage}[h]{0.49\linewidth}
-      \center{\includegraphics[scale=0.5]{images/example_nondetermined.dot.png} \caption{Недетерминированный L-граф}}
+      \center{\includesvg[scale=0.5]{images/example_nondetermined.dot.svg} \caption{Недетерминированный L-граф}}
     \end{minipage}
     \label{det_vs_nondet}  
   \end{figure}
@@ -141,15 +141,15 @@ $\iota(\pi_1), \iota(\pi_2) \in P_] \cap \iota(\pi_1) \neq \iota(\pi_2)$.
 \begin{figure}
     \centering
     \subfloat[\centering Граф с нейтральным циклом]{
-        \includegraphics[scale=.5]{images/example_neutral.dot.png}
+        \includesvg[scale=.5]{images/example_neutral.dot.svg}
     }
     \qquad
     \subfloat[\centering Граф с парными циклами]{
-        \includegraphics[scale=.5]{images/example_paired.dot.png}
+        \includesvg[scale=.5]{images/example_paired.dot.svg}
     }
     \qquad
     \subfloat[\centering Граф с псевдоциклом]{
-        \includegraphics[scale=.5]{images/example_pseudo.dot.png}
+        \includesvg[scale=.5]{images/example_pseudo.dot.svg}
     }
     \caption{3 вида циклов}
     \label{loop-kinds-example}
@@ -181,12 +181,12 @@ $(w,d)$-каноном будем называть успешный путь $T$
 
 Одно важное свойство ядра: $w_1 \leq w_2, d_1 \leq d_2 \implies Core(w_1, d_1) \subseteq Core(w_2, d_2)$
 
-\begin{figure}[t]
+\begin{figure}[h]
     \centering
-    \includegraphics[scale=.4]{images/graph1_path0.dot.png} (a)\\
-    \includegraphics[scale=.4]{images/graph1_path3.dot.png} (b)\\
-    \includegraphics[scale=.4]{images/graph1_path1.dot.png} (c)\\
-    \includegraphics[scale=.4]{images/graph1_path4.dot.png} (d)\\
+    \includesvg[scale=.4]{images/graph1_path0.dot.svg} (a)\\
+    \includesvg[scale=.4]{images/graph1_path3.dot.svg} (b)\\
+    \includesvg[scale=.4]{images/graph1_path1.dot.svg} (c)\\
+    \includesvg[scale=.4]{images/graph1_path4.dot.svg} (d)\\
     
     \caption{Пути из различных ядер графа \ref{lgraph1-expample-image}. (a) $\in Core(0,0)$, (b) $\in Core(1,0)$, (c),(d) $\in Core(1,1)$}
     \label{lgraph1-core-example}

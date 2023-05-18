@@ -10,6 +10,7 @@
 /text/*
 !/text/graphs
 /text/graphs/*
+!/text/static_images/
 !/text/src
 !/text/images
 /text/images/*

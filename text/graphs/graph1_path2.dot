@@ -15,11 +15,11 @@ digraph {
 	Q0 -> 0;
 
 	7 -> Q1;
-	0 -> 1  [item="b[0", label="b\n[0"];
-	1 -> 2  [item="b[0", label="b\n[0"];
-	2 -> 3  [item="b[0", label="b\n[0"];
-	3 -> 4  [item="c", label="c"];
-	4 -> 5  [item="b]0", label="b\n]0"];
-	5 -> 6  [item="b]0", label="b\n]0"];
-	6 -> 7  [item="b]0", label="b\n]0"];
+	3 -> 4  [label="c", fontcolor=red];
+	0 -> 1  [label="b,[0", fontcolor=red];
+	1 -> 2  [label="b,[0", fontcolor=red];
+	2 -> 3  [label="b,[0", fontcolor=red];
+	4 -> 5  [label="b,]0", fontcolor=red];
+	5 -> 6  [label="b,]0", fontcolor=red];
+	6 -> 7  [label="b,]0", fontcolor=red];
 }

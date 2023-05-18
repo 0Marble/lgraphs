@@ -16,12 +16,12 @@ digraph {
 	Q0 -> 0;
 
 	8 -> Q1;
-	0 -> 1  [item="a", label="a"];
-	1 -> 2  [item="b[0", label="b\n[0"];
-	2 -> 3  [item="b[0", label="b\n[0"];
-	3 -> 4  [item="b[0", label="b\n[0"];
-	4 -> 5  [item="c", label="c"];
-	5 -> 6  [item="b]0", label="b\n]0"];
-	6 -> 7  [item="b]0", label="b\n]0"];
-	7 -> 8  [item="b]0", label="b\n]0"];
+	0 -> 1  [label="a", fontcolor=red];
+	4 -> 5  [label="c", fontcolor=red];
+	1 -> 2  [label="b,[0", fontcolor=red];
+	2 -> 3  [label="b,[0", fontcolor=red];
+	3 -> 4  [label="b,[0", fontcolor=red];
+	5 -> 6  [label="b,]0", fontcolor=red];
+	6 -> 7  [label="b,]0", fontcolor=red];
+	7 -> 8  [label="b,]0", fontcolor=red];
 }

@@ -1,10 +1,10 @@
 digraph {
     node [shape=circle]
-    Q0 [style=invisible, height=0, width=0, fixedsize=true]
+    Q0 [style=invisible, height=0, width=0, fixedsize=true];
+    Q1 [style=invisible, height=0, width=0, fixedsize=true];
     Q0 -> A
-    A -> B [label=<a<br/>[₁>];
-    B -> A [label=<]₁> ];
-    A -> C 
-
-    C [shape=doublecircle];
+    A -> B [label="a,[1", fontcolor=red];
+    B -> A [label="]1", fontcolor=red];
+    A -> C;
+    C -> Q1;
 }

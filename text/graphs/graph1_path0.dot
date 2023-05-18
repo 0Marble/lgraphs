@@ -11,7 +11,7 @@ digraph {
 	Q0 -> 0;
 
 	3 -> Q1;
-	0 -> 1  [item="b[0", label="b\n[0"];
-	1 -> 2  [item="c", label="c"];
-	2 -> 3  [item="b]0", label="b\n]0"];
+	0 -> 1  [label="b,[0", fontcolor=red];
+	1 -> 2  [label="c", fontcolor=red];
+	2 -> 3  [label="b,]0", fontcolor=red];
 }

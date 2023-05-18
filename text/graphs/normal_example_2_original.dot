@@ -2,20 +2,19 @@ digraph {
     node [shape=circle];
     rankdir = "LR";
     Q0 [style=invisible, height=0, width=0, fixedsize=true];
+    Q1 [style=invisible, height=0, width=0, fixedsize=true];
 
-    1 [start=true];
     Q0 -> 1;
+    6 -> Q1;
 
-    6 [end=true, shape=doublecircle];
-
-    1 -> 2 [item="[1", label="[1"];
-    2 -> 2 [item="a[2", label="a\n[2"];
-    2 -> 3 [item="b", label="b"];
-    3 -> 3 [item="a]2", label="a\n]2"];
-    3 -> 4 [item="b", label="b"];
-    4 -> 4 [item="]2", label="]2"];
-    3 -> 5 [item="a]1", label="a\n]1"];
-    5 -> 5 [item="a", label="a"];
-    5 -> 6 [item="b", label="b"];
-    4 -> 6 [item="]1", label="]1"];
+    1 -> 2 [ label="[1", fontcolor=red];
+    2 -> 2 [ label="a,[2", fontcolor=red];
+    2 -> 3 [ label="b", fontcolor=red];
+    3 -> 3 [ label="a,]2", fontcolor=red];
+    3 -> 4 [ label="b", fontcolor=red];
+    4 -> 4 [ label="]2", fontcolor=red];
+    3 -> 5 [ label="a,]1", fontcolor=red];
+    5 -> 5 [ label="a", fontcolor=red];
+    5 -> 6 [ label="b", fontcolor=red];
+    4 -> 6 [ label="]1", fontcolor=red];
 }
