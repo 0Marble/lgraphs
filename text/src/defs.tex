@@ -10,14 +10,14 @@ $P = \left\{ (a, b) \mid a \in P_[, b \in P_], \phi(a) = b \right\} \subseteq \l
 Язык $L_p$, порождаемый грамматикой $S \rightarrow \varepsilon \mid a S b S, (a, b) \in P$ назовем языком Дика. Он описывает правильные скобочные последовательности.
 
 Введем отображение $\mu : (P_[ \cup P_])^* \to (P_[ \cup P_])^* $, показывающее баланс скобок:
-\begin{enumerate}
+\begin{enumerate}[label=\arabic*)]
     \item $\mu(\varepsilon) = \varepsilon$;
     \item $\mu(P_1 a b P_2) = \mu(P_1 P_2)$, если $(a, b) \in P$;
     \item иначе, $\mu(X) = X$.
 \end{enumerate}
 
 Глубина скобочной последовательности $depth(X)$ определяется следующими образом:
-\begin{enumerate}
+\begin{enumerate}[label=\arabic*)]
     \item $depth(\varepsilon) = 0$;
     \item $depth(a P_1 b) = depth(P_1) + 1$, если $(a, b) \in P$;
     \item иначе, $depth(P_1 P_2) = max(depth(P_1), depth(P_2))$.
@@ -25,7 +25,7 @@ $P = \left\{ (a, b) \mid a \in P_[, b \in P_], \phi(a) = b \right\} \subseteq \l
 
 \section{L-граф}
 L-графом назовем шестерку $\langle V,E,I,F,\Sigma,P\rangle$, где:
-\begin{itemize}
+\begin{enumerate}[label=\arabic*)]
     \item $V$ -- множество вершин, $Nodes(G) = V$;
     \item $I \subseteq V$ -- непустое множество начальных вершин, $Init(G) = I$;
     \item $F \subseteq V$ -- непустое множество конечных вершин, $Final(G) = F$;
@@ -36,24 +36,24 @@ L-графом назовем шестерку $\langle V,E,I,F,\Sigma,P\rangle$
                     \times \left\{ P_[ \cup P_] \cup \left\{ \varepsilon \right\} \right\} 
                     \times V $
         -- множество дуг, $Edges(G) = E$.
-\end{itemize}
+\end{enumerate}
 Все множества конечные.
 
 \begin{figure}
     \centering
-    \includesvg[scale=0.5, inkscapeformat=png]{images/graph1.dot.svg}
+    \includesvg[inkscapeformat=png]{images/graph1.dot.svg}
     \caption{L-граф}
     \label{lgraph1-expample-image}
     
 \end{figure}
 
 Для дуги $\pi = \langle s, a, b, t \rangle$ введем дополнительные обозначения:
-\begin{itemize}
+\begin{enumerate}[label=\arabic*)]
     \item $beg(\pi) = s$ -- начальная вершина дуги;
     \item $end(\pi) = t$ -- конечная вершина дуги;
     \item $\omega(\pi) = a$ -- пометка дуги;
     \item $\iota(\pi) = b$ -- скобочный след дуги.
-\end{itemize}
+\end{enumerate}
 
 \section{Пути в L-графе}
 Путь $T$ в L-графе $G=\langle V,E,I,F,\Sigma\rangle$ -- такая последовательность \\ 
@@ -70,7 +70,7 @@ $Edges(T) = \left\{ \pi_i \right\}$, $Nodes(T) = \left\{ p_i \right\}$.
 Если $T = T_1 T_2$ -- путь, то $T_1$ -- его маршрут-префикс, $T_2$ -- суффикс.
 
 Пометка пути $\omega(T)$ -- последовательность символов входного алфавита, которые расположены на дугах этого пути:
-\begin{enumerate}
+\begin{enumerate}[label=\arabic*)]
     \item Если $T$ -- пустой путь, то $\omega(T) = \varepsilon$;
     \item Если $T = \pi T_1$, $\pi$ -- дуга, $T_1$ -- маршрут, то $\omega(T) = \omega(\pi) \omega(T_1)$.
 \end{enumerate}
@@ -83,7 +83,7 @@ $Edges(T) = \left\{ \pi_i \right\}$, $Nodes(T) = \left\{ p_i \right\}$.
 Памятью будем называть пару $\langle q, \alpha \rangle$, $\alpha=\mu(\iota(T)), end(T)=q$, $T$ --  префикс пути в $G$. 
 Введем отображение $Mem(T_1,T_2) = T_2', end(T_1) = beg(T_2)$, $\iota(T_1 T_2)$ является префиксом слова из $L_p$, $\omega(T_2) = \omega(T_2')$.
 Оно определяется следующим образом:
-\begin{enumerate}
+\begin{enumerate}[label=\arabic*)]
     \item $Mem(T_1, p) = \langle p, \mu(\iota(T_1)) \rangle$, если $p \in Nodes(G)$;
     \item {
         $Mem(T_1, T_2) = \langle p_0', a_1, b_1, p_1' \rangle \cdots \langle p_{n-1}', a_n, b_n, p_n' \rangle$, если $T_2 =\pi_1 \cdots \pi_n$, 
@@ -103,9 +103,7 @@ $Edges(T) = \left\{ \pi_i \right\}$, $Nodes(T) = \left\{ p_i \right\}$.
     $Mem(T_3, p) = p' \implies \mu(\iota(T_3)) = \alpha$.
     Это значит, что $\forall T_4 : \mu(\alpha \iota(T_4)) = \varepsilon$, $end(T_4)$ -- конечная вершина  $\implies T_3 T_4$ -- успешный путь.
     $T$ -- успешный $\implies \mu(\alpha \beta) = \varepsilon$, $end(T_2)$ -- конечная вершина $G$. 
-    То есть, при $T_4 = T_2, T' = T_3 T_2$ -- успешный. \qed
-
-    
+    То есть, при $T_4 = T_2, T' = T_3 T_2$ -- успешный $\Box$ 
 \end{proof}
 
 \section{Детерминированность}
@@ -113,18 +111,18 @@ $Edges(T) = \left\{ \pi_i \right\}$, $Nodes(T) = \left\{ p_i \right\}$.
     direct(\pi) & = & \left\{ a \in \Sigma \mid \exists T_1 \pi T_2 - \text{успешный путь}, \omega(\pi T_2) = a \alpha, \alpha \in \Sigma^* \right\} \\
     & \cup & \left\{ \varepsilon \mid \exists T_1 \pi T_2 - \text{успешный путь}, \omega(\pi T_2) = \varepsilon \right\}
 \end{eqnarray*}
-L-граф $G$ называется детирминированным, если
+L-граф $G$ называется детeрминированным, если
 $\forall \pi_1, \pi_2 \in Edges(G), \pi_1 \neq \pi_2, beg(\pi_1) = beg(\pi_2)$, 
 из $direct(\pi_1) \cap direct(\pi_2) = \emptyset$ следует, что 
 $\iota(\pi_1), \iota(\pi_2) \in P_] \cap \iota(\pi_1) \neq \iota(\pi_2)$. 
 
 \begin{figure}[h]
     \begin{minipage}[h]{0.49\linewidth}
-      \center{\includesvg[scale=0.5, inkscapeformat=png]{images/example_determined.dot.svg} \caption{Детерминированный L-граф}}
+      \center{\includesvg[scale=0.7, inkscapeformat=png]{images/example_determined.dot.svg} \caption{Детерминированный L-граф}}
     \end{minipage}
     \hfill
     \begin{minipage}[h]{0.49\linewidth}
-      \center{\includesvg[scale=0.5, inkscapeformat=png]{images/example_nondetermined.dot.svg} \caption{Недетерминированный L-граф}}
+      \center{\includesvg[scale=0.7, inkscapeformat=png]{images/example_nondetermined.dot.svg} \caption{Недетерминированный L-граф}}
     \end{minipage}
     \label{det_vs_nondet}  
   \end{figure}
@@ -141,15 +139,15 @@ $\iota(\pi_1), \iota(\pi_2) \in P_] \cap \iota(\pi_1) \neq \iota(\pi_2)$.
 \begin{figure}
     \centering
     \subfloat[\centering Граф с нейтральным циклом]{
-        \includesvg[scale=.5, inkscapeformat=png]{images/example_neutral.dot.svg}
+        \includesvg[inkscapeformat=png]{images/example_neutral.dot.svg}
     }
     \qquad
     \subfloat[\centering Граф с парными циклами]{
-        \includesvg[scale=.5, inkscapeformat=png]{images/example_paired.dot.svg}
+        \includesvg[inkscapeformat=png]{images/example_paired.dot.svg}
     }
     \qquad
     \subfloat[\centering Граф с псевдоциклом]{
-        \includesvg[scale=.5, inkscapeformat=png]{images/example_pseudo.dot.svg}
+        \includesvg[inkscapeformat=png]{images/example_pseudo.dot.svg}
     }
     \caption{3 вида циклов}
     \label{loop-kinds-example}
@@ -167,12 +165,12 @@ $\iota(\pi_1), \iota(\pi_2) \in P_] \cap \iota(\pi_1) \neq \iota(\pi_2)$.
 \section{Ядро L-графа}
 
 $(w,d)$-каноном будем называть успешный путь $T$ со следующими свойствами:
-\begin{itemize}
+\begin{enumerate}[label=\arabic*)]
     \item Для любого маршрута $T_1 T_2 \cdots T_n$, где все $T_i$ -- нейтральные циклы, $n \leq w$;
     \item Для любого маршрута $T_{l,n} T_{l,n-1} \cdots T_{l,1} T_{m,1} T_{r,1} T_{r,2} \cdots T_{r,n}$,\\
        $T_{m,i+1} = T_{l,i} T_{m,i} T_{r,i}$, $\langle T_{l,i}, T_{m,i}, T_{r,i} \rangle$ -- гнезда, $T_{l,i}, T_{r,i}$ -- циклы,
        $n \leq d$.
-\end{itemize}
+\end{enumerate}
 
 Ядром L-графа $Core(G, w, d)$ будем называть множество всех $(w,d)$-канонов. 
 Иначе говоря, $Core(G, w, d)$ -- это множество всех успешных путей, 
@@ -183,10 +181,10 @@ $(w,d)$-каноном будем называть успешный путь $T$
 
 \begin{figure}[h]
     \centering
-    \includesvg[scale=.4, inkscapeformat=png]{images/graph1_path0.dot.svg} (a)\\
-    \includesvg[scale=.4, inkscapeformat=png]{images/graph1_path3.dot.svg} (b)\\
-    \includesvg[scale=.4, inkscapeformat=png]{images/graph1_path1.dot.svg} (c)\\
-    \includesvg[scale=.4, inkscapeformat=png]{images/graph1_path4.dot.svg} (d)\\
+    \includesvg[scale=.65, inkscapeformat=png]{images/graph1_path0.dot.svg} (a)\\
+    \includesvg[scale=.65, inkscapeformat=png]{images/graph1_path3.dot.svg} (b)\\
+    \includesvg[scale=.65, inkscapeformat=png]{images/graph1_path1.dot.svg} (c)\\
+    \includesvg[scale=.65, inkscapeformat=png]{images/graph1_path4.dot.svg} (d)\\
     
     \caption{Пути из различных ядер графа \ref{lgraph1-expample-image}. (a) $\in Core(0,0)$, (b) $\in Core(1,0)$, (c),(d) $\in Core(1,1)$}
     \label{lgraph1-core-example}
