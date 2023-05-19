@@ -63,7 +63,7 @@ digraph UML {
     LGraph [
         shape=box,
         color=black,
-        label="LGraph<N,L>"
+        label="LGraph<G,N,L>"
     ];
 
     LGraph -> GraphTrait [arrowhead=odiamond, color=green, label=" "];
