@@ -49,6 +49,7 @@ digraph UML {
     LGraphLetter -> LetterTrait [arrowhead=odiamond, color=green];
     Memory -> NodeTrait [arrowhead=normal];
     Memory -> NodeTrait [arrowhead=odiamond, color=green];
+    Memory -> Bracket [arrowhead=normal];
     EdgeStruct -> NodeTrait [arrowhead=normal];
     EdgeStruct -> LetterTrait [arrowhead=normal];
 

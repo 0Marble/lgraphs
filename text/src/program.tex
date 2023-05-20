@@ -48,8 +48,8 @@ Rust -- современный, высокопроизводительный и 
     S &\rightarrow& N~|~N~\text{'-'}~E~\text{'->'}~S~|~N~\text{'->'}~S; \\
     E &\rightarrow& char~\text{','}~(\text{'['}~|~\text{']'})~number~|~char~|~(\text{'['}~|~\text{']'})~number; \\
     N &\rightarrow& number; \text{( в случае \emph{usize})} \\
-    N &\rightarrow& number~\text{',\{\}'};~|~number~\text{',\{'}~A~\text{'\}'}; \text{( в случае \emph{Memory<usize>})}\\
-    A &\rightarrow& number~\text{','}~|~number.
+    N &\rightarrow& number~\text{',\{\}'}~|~number~\text{',\{'}~A~\text{'\}'}; \text{( в случае \emph{Memory<usize>})}\\
+    A &\rightarrow& number~\text{','}~A~|~number.
 \end{eqnarray*} 
 
 
