@@ -139,6 +139,20 @@ impl BracketStack {
     pub fn len(&self) -> usize {
         self.state.len()
     }
+
+    pub fn from_brackets(brackets: Vec<Bracket>) -> Option<Self> {
+        let mut res = Self::new();
+
+        for bracket in brackets {
+            if res.can_accept(&bracket) {
+                res.accept(bracket);
+            } else {
+                return None;
+            }
+        }
+
+        Some(res)
+    }
 }
 
 impl Default for BracketStack {

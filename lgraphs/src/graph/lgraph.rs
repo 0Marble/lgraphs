@@ -110,6 +110,26 @@ where
         CoreIter::new(self, w, d)
     }
 
+    pub fn core_from<'a>(
+        &'a self,
+        start_path: Path<N, LGraphLetter<L>>,
+        w: usize,
+        d: usize,
+    ) -> impl Iterator<Item = Path<N, LGraphLetter<L>>> + 'a
+    where
+        Self: Sized,
+        L: 'a,
+        N: 'a,
+    {
+        let stack = BracketStack::from_brackets(start_path.iota()).unwrap();
+        CoreIter {
+            graph: self,
+            state: vec![(start_path, stack)],
+            w,
+            d,
+        }
+    }
+
     pub fn normal_form<G0>(&self, d0: usize) -> LGraph<G0, Memory<N>, L>
     where
         G0: ModifyableGraph<Memory<N>, LGraphLetter<L>>,
@@ -220,7 +240,10 @@ where
                 if edge.bracket().map_or(true, |b| brackets.can_accept(b)) {
                     let mut new_path = path.clone();
                     new_path.add_edge(edge.clone());
-                    if new_path.depth() <= max_depth && new_path.get_w() <= self.w {
+                    if new_path.depth() <= max_depth
+                        && new_path.get_w() <= self.w
+                        && new_path.get_d() <= self.d
+                    {
                         let mut new_brackets = brackets.clone();
                         if let Some(b) = edge.bracket() {
                             new_brackets.accept(b.clone())
