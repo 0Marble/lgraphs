@@ -11,11 +11,10 @@ digraph {
 	4 [label=3];
 
 	Q0 -> 0;
-
 	5 -> Q1;
-	2 -> 3  [label="c", fontcolor=red];
-	0 -> 1  [label="b,[0", fontcolor=red];
-	1 -> 2  [label="b,[0", fontcolor=red];
-	3 -> 4  [label="b,]0", fontcolor=red];
-	4 -> 5  [label="b,]0", fontcolor=red];
+	2 -> 3  [label=<<i>c</i>> ];
+	0 -> 1  [label=<<i>b</i>,<FONT COLOR="blue">(₀</FONT>> ];
+	1 -> 2  [label=<<i>b</i>,<FONT COLOR="blue">(₀</FONT>> ];
+	3 -> 4  [label=<<i>b</i>,<FONT COLOR="blue">)₀</FONT>> ];
+	4 -> 5  [label=<<i>b</i>,<FONT COLOR="blue">)₀</FONT>> ];
 }

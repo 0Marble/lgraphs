@@ -4,9 +4,9 @@ digraph {
     Q1 [style=invisible, height=0, width=0, fixedsize=true];
     Q0 [style=invisible, height=0, width=0, fixedsize=true]
     Q0 -> A
-    A -> B [label="a,[0", fontcolor=red];
-    A -> C [label="a,[1", fontcolor=red];
-    B -> D [label="b,]0", fontcolor=red];
-    C -> D [label="c,]1", fontcolor=red];
+    A -> B [label=<<i>a</i>,<FONT COLOR="blue">(₀</FONT>> ];
+    A -> C [label=<<i>a</i>,<FONT COLOR="blue">(₁</FONT>> ];
+    B -> D [label=<<i>b</i>,<FONT COLOR="blue">)₀</FONT>> ];
+    C -> D [label=<<i>c</i>,<FONT COLOR="blue">)₁</FONT>> ];
     D -> Q1;
 }

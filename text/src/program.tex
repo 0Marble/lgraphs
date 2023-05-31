@@ -1,10 +1,10 @@
-\chapter{Реализация}
+\chapter{Реализация библиотеки для работы с L-графами}
 
 Для работы с L-графами, была написана библиотека на языке Rust. 
 Rust -- современный, высокопроизводительный и безопасный язык, библиотеки которого
-можно подключить к другим языкам, или использовать с механизм WebAssembly для использования
-в браузере. Вместе с языком поставляется программа Cargo -- сборщик проектов (build tool) и менеджер
-пакетов (package manager). 
+можно подключить к другим языкам, или, благодаря поддержки технологии WebAssembly, использовать
+в браузере. Вместе с компилятором поставляется программа Cargo -- сборщик проектов (build tool) и менеджер
+зависимостей (package manager). 
 
 В библиотеке реализованы ввод-вывод L-графов в текстовом формате, 
 алгоритмы построения ядра L-графа, нормальной формы, и проверка достаточных условий регулярности.
@@ -37,8 +37,8 @@ Rust -- современный, высокопроизводительный и 
 
 Класс \emph{Path} описывает пути или маршруты. Он определяется как пустой маршрут, состоящий из одной вершины,
 или непустой путь, содержащий список его дуг.
-В определении методов \emph{Path} используется одна отличительная черта Rust -- возможность писать новые методы
-для различных обобщений (????). Это позволяет реализовать методы, связанные только с L-графами, только для
+В определении методов \emph{Path} используется одна отличительная черта Rust -- возможность добавлять новые методы для разных 
+подстановок типов-аргументов. Это позволяет реализовать методы, связанные только с L-графами, только для
 \emph{Path<N, LGraphLetter<T>{}>}.
 Еще конкретнее, типы 
 \emph{Path<usize, LGraphLetter<char>{}>} и \emph{Path<Memory<usize>, LGraphLetter<char>{}>}
@@ -52,16 +52,14 @@ Rust -- современный, высокопроизводительный и 
     A &\rightarrow& number~\text{','}~A~|~number.
 \end{eqnarray*} 
 
-
-\emph{DefaultGraph} является самым простым примером реализации инетрфейса \emph{Graph}.
-Он представляет из себя просто список вершин и дуг, и используется только для конкретного примера.
+\emph{DefaultGraph} является простым примером реализации инетрфейса \emph{Graph}.
+Он представляет из себя просто список вершин и дуг.
 Для \emph{DefaultGraph<usize, LGraphLetter<char>{}>} и \emph{DefaultGraph<Memory<usize>, LGraphLetter<char>{}>}
 так же реализованы \emph{FromStr} и \emph{Display}, и граф определяется следующим образом:
 \[ S \rightarrow ( N~\text{'->'}~|~\text{'->'}~N~|~N~\text{'-'}~E~\text{'->'}~N~|~N~\text{'->'}~N)~\text{';'}~S.\]
 
-
 Класс \emph{LGraph<G,N,L>} описывает L-графы, и фактически является просто оберточным типом (wrapper) типа \emph{G},
-реализовывающего интерфейс \emph{Graph<N,LGraphLetter<L>{}>}. В этом классе реализованы алгоритмы \emph{core(w, d)}, \emph{normal\_form(d0)},
+реализовывающего интерфейс \emph{Graph<N,LGraphLetter<L>{}>}. В этом классе реализованы алгоритмы \emph{core(w, d)}, \emph{normal\_form()},
 и методы проверки достаточных условий регулярности. Метод \emph{core(w, d)} возвращает итератор по всем путям из ядра L-графа,
 и поэтому поддерживает ленивое выполнение. \emph{LGraph<G,N,L>} так же реализует интерфейсы \emph{FromStr} и \emph{Display},
 если конкретный тип \emph{G} их реализует.   
@@ -69,7 +67,6 @@ Rust -- современный, высокопроизводительный и 
 во многих случаях позволяющий компилятору из контекста самому понять, какого типа должна быть переменная,
 и обычно можно писать просто \emph{LGraph<\_,\_,\_>}. Конечно, в таких случаях, как считывание графа из строки, конкретный
 метод реализации этой функции зависит от конкретного типа, и приходится писать полное название типа.
-
 
 \section{Примеры использования библиотеки}
 
@@ -85,7 +82,7 @@ Rust -- современный, высокопроизводительный и 
 
 \begin{figure}
     \centering
-    \includegraphics[scale=0.4]{static_images/install_step3.png}
+    \includegraphics[scale=0.4]{static_images/install_example.png}
     \caption{Проект с подключенной библиотекой}
     \label{project-setup-image}
 \end{figure}
@@ -115,7 +112,7 @@ Rust -- современный, высокопроизводительный и 
 
 \begin{figure}
     \centering
-    \includegraphics[scale=0.4]{static_images/install_step5.png}
+    \includegraphics[scale=0.4]{static_images/hello_world.png}
     \caption{Пример запуска программы \ref{helloworld-program}}
     \label{helloworld-out-image}
 \end{figure}
@@ -130,10 +127,17 @@ Rust -- современный, высокопроизводительный и 
 
 \begin{figure}
     \centering
-    \includegraphics[scale=0.4]{static_images/install_step6.png}
+    \includegraphics[scale=0.4]{static_images/core11.png}
     \caption{Пример запуска программы \ref{core11-program}}
     \label{core11-out-image}
 \end{figure}
+
+\subsection{Проверка регулярности}
+\inputminted[linenos]{rust}{../lgraphs/examples/reg.rs} \label{reg-program}
+
+Рассмотрим 3 графа $g1,g2,g3$. Для $g1$ прверим условие \ref{condition_no_letters}, 
+для $g2$ условие \ref{condition_no_brackets}, для $g3$ -- \ref{condition_one_sided_loops}.
+Результаты проверки выведем на экран, все будут \verb | true |.
 
 \subsection{Построение нормальой формы}
 \inputminted[linenos]{rust}{../lgraphs/examples/normal.rs} \label{normal-program}
@@ -152,7 +156,7 @@ L-графа, поэтому приходится писать \emph{normal\_for
 
 \begin{figure}[h]
     \centering
-    \includesvg[scale=0.4]{static_images/mygraph.svg}
+    \includesvg[scale=0.7]{static_images/mygraph.svg}
     \caption{Пример запуска программы \ref{normal-program}}
     \label{normal-out-image}
 \end{figure}

@@ -1,19 +1,305 @@
 \appendix
 \chapter{Описание интерфейсов библиотеки} \label{AppendixA}
 
-\begin{tabular}{|m{1em}|p{3cm}|p{3cm}|p{3cm}|p{4cm}|} 
+\begin{longtable}[c]{|m{4em}|m{9em}|m{10em}|m{10em}|}
+    \caption{Список классов.\label{all_class_table}}\\
+
     \hline
-    \rotatebox{90}{Класс} & Метод & Параметры & Возвращаемый тип & Описание \\
-    % \hline
-    % \multirow{2}{*}{\rotatebox{90}{\textbf{Class Name}}} & \textbf{Method Name} & \textbf{Method Parameters} & \textbf{Return Type} & \textbf{Description}\\
-    % \cline{2-5}& \textbf{method\_name} & param: datatype & return\_type & Explanation of what method\_name does.\\ 
+        \textbf{Ссылка на таблицу методов} & \textbf{Название класса} & \textbf{Наследование} & \textbf{Описание}\\
+    \hline
+        -- & Letter & Self: Debug + Clone + PartialEq + Eq + Hash & Интерфейс для символов входного алфавита \\
+    \hline
+        -- & Node & Self: Debug + Clone + PartialEq + Eq + Hash  & Интерфейс для названий вершин \\
+    \hline
+        \ref{class_Bracket_api} & Bracket & Self: Debug + Clone + PartialEq + Eq + Hash  & Класс для описания скобок \\
+    \hline
+        \ref{class_BracketStack_api} & BracketStack & Self: Debug + Clone + PartialEq + Eq + Hash + Default & Класс для описания стека скобок \\
+    \hline
+        \ref{class_EdgeNL_api} \newline \ref{class_EdgeNLGraphLetterL_api} & Edge<N, L> & Self: Debug + Clone + PartialEq + Eq + Hash \newline N: Node \newline  L: Letter & Класс для описания граней графа \\
+    \hline
+        \ref{class_PathNL_api} \newline \ref{class_PathNLGraphLetterL_api} & Path<N, L> & Self: Debug + Clone + PartialEq + Eq + Hash + FromStr + Display \newline N: Node \newline L: Letter & Класс для описания путей и маршрутов в графах \\
+    \hline
+        \ref{class_GraphNL_api} & Graph<N, L> & N: Node \newline L: Letter & Интерфейс для описания графов \\
+    \hline
+        \ref{class_ModifyableGraphNL_api} & ModifyableGraph<N, L> & Self: Graph<N,L> \newline N: Node \newline L: Letter & Интерфейс для описания графов, которые можно изменять \\
+    \hline
+        \ref{class_DefaultGraphNL_api} & DefaultGraph<N, L> & Self: Clone + Debug + Display + FromStr + Graph<N, L> + ModifyableGraph<N, L> + PartialEq \newline N: Node \newline L: Letter & Имплементация Graph по умолчанию \\
+    \hline
+        \ref{class_LGraphLetterL_api} & LGraphLetter<L> & Self: Clone + Debug + Default + Display + Eq + FromStr + Hash + Letter + PartialEq \newline L: Letter & Пара (буква, скобка) \\
+    \hline
+        \ref{class_MemoryN_api} & Memory<N> & Self: Clone + Debug + Display + Eq + FromStr + Hash + Node + PartialEq \newline N: Node & Память L-графа, пара (вершина, стек скобок) \\
+    \hline
+        \ref{class_LGraphGNL_api} & LGraph<G, N, L> & Self: Clone + Debug + Display + Eq + FromStr + Graph<N, LGraphLetter<L>{}> + PartialEq \newline G: ModifyableGraph<N, LGraphLetter<L>{}> \newline N: Node \newline L: Letter & Класс для описания L-графов\\
+    \hline
+\end{longtable}
+
+\begin{table}
+    \caption{Методы класса Bracket}
+    \label{class_Bracket_api}
+    \begin{tabular}{|m{20em}|m{20em}|}
+        \hline
+        \textbf{Метод} & \textbf{Описание}\\
+        \hline
+            fn new(index: usize, open: bool) -> Self & Конструктор \\
+        \hline
+            fn index(\&self) -> usize & Индекс скобки \\
+        \hline
+            fn is\_open(\&self) -> bool & Открывающая или закрывающая скобка \\
+        \hline
+    \end{tabular}
+\end{table}
     
-    \hline
-    \multirow{2}{*}{\rotatebox{90}{\textbf{Class 1}}} & method\_name\_1 & param1: datatype1\newline param2: datatype2 & return\_type1 & Explanation of what method\_name\_1 does.\\
-    \cline{2-5}& method\_name\_2 & param1: datatype1 & return\_type2 & Explanation of what method\_name\_2 does.\\ 
-    
-    \hline
-    \multirow{2}{*}{\rotatebox{90}{\textbf{Class 2}}} & method\_name\_3 & param1: datatype1\newline param2: datatype2\newline param3: datatype3 & return\_type3 & Explanation of what method\_name\_3 does.\\
-    \cline{2-5}& method\_name\_4 & param1: datatype1\newline param2: datatype2 & return\_type4 & Explanation of what method\_name\_4 does.\\ 
-    \hline
-\end{tabular}
+
+\begin{table}
+    \caption{Методы класса BracketStack}
+    \label{class_BracketStack_api}
+    \begin{tabular}{|m{20em}|m{20em}|}
+        \hline
+        \textbf{Метод} & \textbf{Описание}\\
+        \hline
+            fn new() -> Self & Конструктор \\
+        \hline
+            fn accept(\&mut self, bracket: Bracket) & Добавит скобку на верх стека \\
+        \hline
+            fn can\_accept(\&self, bracket: \&Bracket) -> bool & Проверить, можно ли добавить скобку в стек \\
+        \hline
+            fn clear(\&mut self) & Очистить стек \\
+        \hline
+            fn state(\&self) -> \&[usize] & Список индексов скобок в стеке \\
+        \hline
+            fn is\_empty(\&self) -> bool & Пустой ли стек \\
+        \hline
+            fn len(\&self) -> usize & Сколько скобок в стеке \\
+        \hline
+            fn from\_brackets(brackets: Vec<Bracket>) -> Option<Self> & Попробывать создать стек из списка скобок \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}
+    \caption{Методы класса Edge<N, L>}
+    \label{class_EdgeNL_api}
+    \begin{tabular}{|m{20em}|m{20em}|}
+        \hline
+        \textbf{Метод} & \textbf{Описание}\\
+        \hline
+            fn new(source: N, target: N, letter: L) -> Self & Конструктор \\
+        \hline
+            fn beg(\&self) -> \&N & Начальная вершина дуги \\
+        \hline
+            fn end(\&self) -> \&N & Конечная вершина дуги \\
+        \hline
+            fn letter(\&self) -> \&L & Буква на дуге \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}
+    \caption{Методы класса Edge<N, LGraphLetter<L>{}>}
+    \label{class_EdgeNLGraphLetterL_api}
+    \begin{tabular}{|m{20em}|m{20em}|}
+        \hline
+        \textbf{Метод} & \textbf{Описание}\\
+        \hline
+        fn item(\&self) -> Option<\&L> & Буква на дуге \\
+        \hline
+            fn bracket(\&self) -> Option<\&Bracket> & Скобка на дуге \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}
+    \caption{Методы класса Path<N, L>}
+    \label{class_PathNL_api}
+    \begin{tabular}{|m{20em}|m{20em}|}
+        \hline
+        \textbf{Метод} & \textbf{Описание}\\
+        \hline
+            fn new(node: N) -> Self & Конструктор. Изначально, пустой путь состоит из одной вершины. \\
+        \hline
+            fn add\_edge(\&mut self, edge: Edge<N, L>) & Добавить дугу \\
+        \hline
+            fn beg(\&self) -> \&N & Начало пути \\
+        \hline
+            fn end(\&self) -> \&N & Конец пути \\
+        \hline
+            fn len\_in\_edges(\&self) -> usize & Длина пути в дугах \\
+        \hline
+            fn len\_in\_nodes(\&self) -> usize & Длина пути в вершинах \\
+        \hline
+            fn is\_empty(\&self) -> bool & Пустой ли путь \\
+        \hline
+            fn nth\_node(\&self, n: usize) -> Option<\&N> & Вершина с индкесом $n$ \\
+        \hline
+            fn nth\_edge(\&self, n: usize) -> Option<\&Edge<N, L>{}> & Дуга с индексом $n$ \\
+        \hline
+            fn nodes(\&self) -> impl Iterator<Item = \&N> + '\_ & Итератор по всем вершинам \\
+        \hline
+            fn edges(\&self) -> impl Iterator<Item = \&Edge<N, L>{}> + '\_ & Итератор по всем дугам \\
+        \hline
+            fn subpath(\&self, beg\_node\_index: usize, end\_node\_index: usize) -> Option<Self> & Маршрут пути от вершины с индексом beg\_node\_index до вершины с индексом end\_node\_index включительно \\
+        \hline
+            fn loopify\_on\_first(\&self) -> Option<Self> & Заменяет последнюю вершину на первую, создавая цикл \\
+        \hline
+            fn loopify\_on\_last(\&self) -> Option<Self> & Заменяет первую вершину на последнюю, создавая цикл \\
+        \hline
+            fn concat(\&self, next: \&Self) -> Self & Конкатенация путей \\
+        \hline
+            fn to\_dot(\&self) -> String \newline where N: ToString, L:ToString & Записывает путь в формате DOT \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}
+    \caption{Методы класса Path<N, LGraphLetter<L>{}>}
+    \label{class_PathNLGraphLetterL_api}
+    \begin{tabular}{|m{20em}|m{20em}|}
+        \hline
+        \textbf{Метод} & \textbf{Описание}\\
+        \hline
+            fn mem(\&self) -> Path<Memory<N>, LGraphLetter<L>{}> & $Mem(T)$ \\
+        \hline
+            fn depth(\&self) -> usize & $depth(T)$ \\
+        \hline
+            fn get\_w(\&self) -> usize & Параметр $w$ для ядра \\
+        \hline
+            fn get\_d(\&self) -> usize & Параметр $d$ для ядра \\
+        \hline
+            fn iota(\&self) -> Vec<Bracket> & $\iota(T)$, скобочный след \\
+        \hline
+            fn is\_balanced(\&self) -> bool & Сбалансирован ли путь, $\mu(\iota(T)) = \varepsilon$ \\
+        \hline
+            fn is\_subpath\_balanced(\&self, beg\_node\_index: usize, end\_node\_index: usize) -> bool & Сбалансирован ли маршрут от beg\_node\_index до end\_node\_index включительно \\
+        \hline
+            fn paired\_loops(\&self) -> impl Iterator<Item = ((usize, usize), (usize, usize))> + '\_ & Итератор по всем парным циклам $(T_l, T_r)$, в формате $((l_1,l_2), (r_1, r_2))$, где $T_l = T.subpath(l_1, l_2)$, $T_r = T.subpath(r_1, r_2)$ \\
+        \hline
+            fn is\_nest(\&self, left: (usize, usize), right: (usize, usize)) -> bool & Образуют ли маршруты с индексами left и right гнездо\\
+        \hline
+            fn is\_simple\_paired\_loops(\&self, left: (usize, usize), right: (usize, usize)) -> bool & Является ли данный парный цикл простым \\
+        \hline
+            fn simple\_paired\_loops(\&self) -> impl Iterator<Item = ((usize, usize), (usize, usize))> + '\_ & Итератор по всем простым парным циклам \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}
+    \caption{Методы интерфейса Graph<N, L>}
+    \label{class_GraphNL_api}
+    \begin{tabular}{|m{20em}|m{20em}|}
+        \hline
+        \textbf{Метод} & \textbf{Описание}\\
+        \hline
+            fn nodes(\&self) -> Box<dyn Iterator<Item = \&N> + '\_> & Итератор по всем вершинам графа \\
+        \hline
+            fn edges(\&self) -> Box<dyn Iterator<Item = \&Edge<N, L>{}> + '\_> & Итератор по всем дугам графа \\
+        \hline
+            fn start\_node(\&self) -> \&N & Начальная вершина \\
+        \hline
+            fn end\_nodes(\&self) -> Box<dyn Iterator<Item = \&N> + '\_> & Итератор по конечным вершинам \\
+        \hline
+            fn node\_count(\&self) -> usize & Количество вершин \\
+        \hline
+            fn is\_start\_node(\&self, node: \&N) -> bool & Является ли данная вершина начальной \\
+        \hline
+            fn is\_end\_node(\&self, node: \&N) -> bool & Является ли данная вершина конечной \\
+        \hline
+            fn edges\_from<'a, 'b>(\&'a self, node: \&'b N) -> Box<dyn Iterator<Item = \&Edge<N, L>{}> + 'a> \newline 
+            where L: 'a, 'b: 'a, & Итератор по всем дугам, начинающимся с вершины node \\
+        \hline
+            fn edges\_to<'a, 'b>(\&'a self, node: \&'b N) -> Box<dyn Iterator<Item = \&Edge<N, L>{}> + 'a> \newline 
+            where L: 'a, 'b: 'a, & Итератор по всем дугам, кончающемся вершиой node\\
+        \hline
+            fn has\_node(\&self, node: \&N) -> bool & Есть ли данная вершина в графе \\
+        \hline
+            fn has\_edge(\&self, edge: \&Edge<N, L>) -> bool & Есть ли данная дуга в графе \\
+        \hline
+            fn to\_dot(\&self) -> String \newline where N: ToString, L: ToString, & Вывести граф в формате DOT \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}
+    \caption{Методы интерфейса ModifyableGraph<N, L>}
+    \label{class_ModifyableGraphNL_api}
+    \begin{tabular}{|m{20em}|m{20em}|}
+        \hline
+        \textbf{Метод} & \textbf{Описание}\\
+        \hline
+            fn new\_empty(start\_node: N, end\_nodes: impl IntoIterator<Item = N>) -> Self & Конструктор графа без дуг \\
+        \hline
+            fn add\_edge(\&mut self, edge: Edge<N, L>) & Добавить дугу \\
+        \hline
+            fn from\_paths(paths: impl IntoIterator<Item = Path<N, L>{}>) -> Option<Self> \newline where Self: Sized, & Создать граф из данных путей \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}
+    \caption{Методы класса DefaultGraph<N, L>}
+    \label{class_DefaultGraphNL_api}
+    \begin{tabular}{|m{20em}|m{20em}|}
+        \hline
+        \textbf{Метод} & \textbf{Описание}\\
+        \hline
+            fn new(start\_node: N, end\_nodes: impl IntoIterator<Item = N>) -> Self & Конструктор. Для добавления дуг, пользоваться методами из ModifyableGraph \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}
+    \caption{Методы класса LGraphLetter<L>}
+    \label{class_LGraphLetterL_api}
+    \begin{tabular}{|m{20em}|m{20em}|}
+        \hline
+        \textbf{Метод} & \textbf{Описание}\\
+        \hline
+            fn new(letter: Option<L>, bracket: Option<Bracket>) -> Self & Конструктор \\
+        \hline
+            fn letter(\&self) -> Option<\&L> & Ссылка на букву \\
+        \hline
+            fn bracket(\&self) -> Option<\&Bracket> & Ссылка на скобку \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}
+    \caption{Методы класса Memory<N>}
+    \label{class_MemoryN_api}
+    \begin{tabular}{|m{20em}|m{20em}|}
+        \hline
+        \textbf{Метод} & \textbf{Описание}\\
+        \hline
+            fn new(node: N, brackets: BracketStack) -> Self & Конструктор \\
+        \hline
+            fn node(\&self) -> \&N & Сслыка на вершину \\
+        \hline
+            fn brackets(\&self) -> \&BracketStack & Ссылка на стек скобок \\
+        \hline
+    \end{tabular}
+\end{table}
+
+\begin{table}
+    \caption{Методы класса LGraph<G, N, L>}
+    \label{class_LGraphGNL_api}
+    \begin{tabular}{|m{20em}|m{20em}|}
+        \hline
+        \textbf{Метод} & \textbf{Описание}\\
+        \hline
+            fn new(graph: G) -> Self & Конструктор \\
+        \hline
+            fn graph(\&self) -> \&G & Ссылка на лежащий в основе граф \\
+        \hline
+            fn core<'a>(\&'a self, w: usize, d: usize) -> impl Iterator<Item = Path<N, LGraphLetter<L>{}>{}> + 'a \newline
+            where Self: Sized, L: 'a, N: 'a, & Итератор по всем путям из $Core(G, w, d)$ \\
+        \hline
+            fn normal\_form<G0>(\&self) -> LGraph<G0, Memory<N>, L> \newline 
+            where G0: ModifyableGraph<Memory<N>, LGraphLetter<L>{}>, & Перевод в нормальную форму \\
+        \hline
+            fn no\_brackets(\&self) -> bool & Проверка условия регулярности \ref{condition_no_brackets} \\
+        \hline
+            fn no\_letters(\&self) -> bool & Проверка условия регулярности \ref{condition_no_letters} \\
+        \hline
+            fn core11\_no\_letters\_on\_loops(\&self) -> bool & Проверка условия регулярности \ref{condition_one_sided_loops} \\
+        \hline
+    \end{tabular}
+\end{table}

@@ -10,10 +10,9 @@ digraph {
 	2 [label=2];
 
 	Q0 -> 0;
-
 	4 -> Q1;
-	0 -> 1  [label="a", fontcolor=red];
-	2 -> 3  [label="c", fontcolor=red];
-	1 -> 2  [label="b,[0", fontcolor=red];
-	3 -> 4  [label="b,]0", fontcolor=red];
+	0 -> 1  [label=<<i>a</i>> ];
+	2 -> 3  [label=<<i>c</i>> ];
+	1 -> 2  [label=<<i>b</i>,<FONT COLOR="blue">(₀</FONT>> ];
+	3 -> 4  [label=<<i>b</i>,<FONT COLOR="blue">)₀</FONT>> ];
 }

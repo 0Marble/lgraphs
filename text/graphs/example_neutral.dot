@@ -2,9 +2,9 @@ digraph {
     node [shape=circle]
     Q0 [style=invisible, height=0, width=0, fixedsize=true];
     Q1 [style=invisible, height=0, width=0, fixedsize=true];
-    Q0 -> A
-    A -> B [label="a,[1", fontcolor=red];
-    B -> A [label="]1", fontcolor=red];
+    Q0 -> A;
+    A -> B [label=<<i>a</i>,<FONT COLOR="blue">(₁</FONT>> ];
+    B -> A [label=<<FONT COLOR="blue">)₁</FONT>> ];
     A -> C;
     C -> Q1;
 }

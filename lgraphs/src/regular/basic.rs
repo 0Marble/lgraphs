@@ -12,11 +12,15 @@ where
     N: Node,
     L: Letter,
 {
-    pub fn no_brackets_reg(&self) -> bool {
+    pub fn no_brackets(&self) -> bool {
         self.edges().all(|e| e.bracket().is_none())
     }
 
-    pub fn core11_no_letters_on_loops_reg(&self) -> bool {
+    pub fn no_letters(&self) -> bool {
+        self.edges().all(|e| e.item().is_none())
+    }
+
+    pub fn core11_no_letters_on_loops(&self) -> bool {
         for t in self.core(1, 1) {
             let mut had_letter = false;
             for (left, right) in t.simple_paired_loops() {
