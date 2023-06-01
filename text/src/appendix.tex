@@ -1,3 +1,5 @@
+%cSpell: ignore Modifyable, usize, loopify, concat
+
 \appendix
 \chapter{Описание интерфейсов библиотеки} \label{AppendixA}
 
@@ -71,7 +73,7 @@
         \hline
             fn len(\&self) -> usize & Сколько скобок в стеке \\
         \hline
-            fn from\_brackets(brackets: Vec<Bracket>) -> Option<Self> & Попробывать создать стек из списка скобок \\
+            fn from\_brackets(brackets: Vec<Bracket>) -> Option<Self> & Попробовать создать стек из списка скобок \\
         \hline
     \end{tabular}
 \end{table}
@@ -129,7 +131,7 @@
         \hline
             fn is\_empty(\&self) -> bool & Пустой ли путь \\
         \hline
-            fn nth\_node(\&self, n: usize) -> Option<\&N> & Вершина с индкесом $n$ \\
+            fn nth\_node(\&self, n: usize) -> Option<\&N> & Вершина с индексом $n$ \\
         \hline
             fn nth\_edge(\&self, n: usize) -> Option<\&Edge<N, L>{}> & Дуга с индексом $n$ \\
         \hline
@@ -207,7 +209,7 @@
             where L: 'a, 'b: 'a, & Итератор по всем дугам, начинающимся с вершины node \\
         \hline
             fn edges\_to<'a, 'b>(\&'a self, node: \&'b N) -> Box<dyn Iterator<Item = \&Edge<N, L>{}> + 'a> \newline 
-            where L: 'a, 'b: 'a, & Итератор по всем дугам, кончающемся вершиой node\\
+            where L: 'a, 'b: 'a, & Итератор по всем дугам, кончающемся вершиной node\\
         \hline
             fn has\_node(\&self, node: \&N) -> bool & Есть ли данная вершина в графе \\
         \hline
@@ -271,7 +273,7 @@
         \hline
             fn new(node: N, brackets: BracketStack) -> Self & Конструктор \\
         \hline
-            fn node(\&self) -> \&N & Сслыка на вершину \\
+            fn node(\&self) -> \&N & Ссылка на вершину \\
         \hline
             fn brackets(\&self) -> \&BracketStack & Ссылка на стек скобок \\
         \hline

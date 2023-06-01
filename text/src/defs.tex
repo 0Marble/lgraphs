@@ -1,3 +1,5 @@
+%cSpell: ignore нетерминал нетерминалов
+
 \chapter{Основные понятия} \label{chapter1}
 
 \section{Формальные языки}
@@ -38,8 +40,8 @@ $\psi_1 \psi_2 \dots \psi_n, \psi_i$, такая что $\alpha \rightarrow_G \p
 Регулярные языки можно описывать с помощью \emph{конечных автоматов} -- наборов вида $\langle Q, \Sigma, \delta, q_0, F \rangle$, где
 \begin{enumerate}[label=\arabic*)]
     \item $Q$ -- конечное множество состояний;
-    \item $\Sigma$ -- алвавит;
-    \item $\delta$ -- отоброжение из $Q \times \Sigma$ в $\mathcal{P} (Q)$ -- все подмножества $Q$, функция переходов;
+    \item $\Sigma$ -- алфавит;
+    \item $\delta$ -- отображение из $Q \times \Sigma$ в $\mathcal{P} (Q)$ -- все подмножества $Q$, функция переходов;
     \item $q_0 \in Q$ -- начальная вершина;
     \item $F \subseteq Q$ -- множество конечных вершин.
 \end{enumerate}
@@ -159,7 +161,7 @@ $Edges(T) = \left\{ \pi_i \right\}$, $Nodes(T) = \left\{ p_i \right\}$.
     direct(\pi) & = & \left\{ a \in \Sigma \mid \exists T_1 \pi T_2 - \text{успешный путь}, \omega(\pi T_2) = a \alpha, \alpha \in \Sigma^* \right\} \\
     & \cup & \left\{ \varepsilon \mid \exists T_1 \pi T_2 - \text{успешный путь}, \omega(\pi T_2) = \varepsilon \right\}
 \end{eqnarray*}
-L-граф $G$ называется \emph{детeрминированным}, если
+L-граф $G$ называется \emph{детерминированным}, если
 $\forall \pi_1, \pi_2 \in Edges(G), \pi_1 \neq \pi_2, beg(\pi_1) = beg(\pi_2)$, 
 из условия $direct(\pi_1) \cap direct(\pi_2) = \emptyset$ следует, что 
 $\iota(\pi_1), \iota(\pi_2) \in P_] \cap \iota(\pi_1) \neq \iota(\pi_2)$. 
@@ -245,9 +247,9 @@ $\langle T_{22}, T_3, T_{42} \rangle$ -- парные. Фактически эт
 
 \section{Нормальная форма L-графа}
 
-L-граф $G$ будем считать L-графом \emph{в нормальой форме}, если в его путях нет \emph{псевдоциклов}.
+L-граф $G$ будем считать L-графом \emph{в нормальной форме}, если в его путях нет \emph{псевдоциклов}.
 Псевдоциклы доставляют некоторые трудности при рассуждениях об L-графах, так как, к примеру,
 некоторые циклические части графа на самом деле не приводят к зацикливанию, или, что еще хуже, могут
-быть частью парнымых циклов в неоторых путях, а в некоторых -- псевдоциклов. 
+быть частью парных циклов в некоторых путях, а в некоторых -- псевдоциклов. 
 
 \clearpage
