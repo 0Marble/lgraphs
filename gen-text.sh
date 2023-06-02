@@ -10,6 +10,11 @@ do
     dot graphs/$GRAPH_FILE -Tsvg -o images/$GRAPH_FILE.svg
 done
 
-# xelatex -shell-escape main.tex
+latexmk -synctex=1 -interaction=nonstopmode -file-line-error -xelatex -outdir=out main.tex --shell-escape
+
+cd ../presentation
+
+[ ! -d images ] && mkdir images
 
 latexmk -synctex=1 -interaction=nonstopmode -file-line-error -xelatex -outdir=out main.tex --shell-escape
+

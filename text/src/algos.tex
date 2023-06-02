@@ -124,7 +124,7 @@
         \State {$G' \gets G_0$}
 
         \ForAll{$T \in Core(G, 1, 2) \setminus Core(G, 1, 1)$}
-            \ForAll {$T_1 T_2 T_3 T_4 T_5 = T$, $\langle T_2, T_3, T_4\rangle$ -- простое гнездо, $T_1 T_3 T_5 \in Core(G, 1, 1)$}
+            \ForAll {$T_1 T_2 T_3 T_4 T_5 = T$, $\langle T_2, T_3, T_4\rangle$ -- простые парные циклы, $T_1 T_3 T_5 \in Core(G, 1, 1)$}
                 \State $T_l \gets Mem(T_1, T_2)$
                 \State $T_r \gets Mem(T_1 T_2 T_3, T_4)$
                 \If{$beg(T_l) \in Nodes(G_0) \wedge end(T_r) \in Nodes(G_0)$} 
@@ -221,7 +221,7 @@
     \label{condition_no_letters}
     В L-графе $G$ нет дуг с буквами $\implies$ $G$ регулярный. 
 \end{theorem}
-Тогда $L(G) = \{ \varepsilon \}$ -- одна пустая строка.
+Тогда $L(G)$ -- либо язык из одной пустой строки, либо пустой (если нет успешных путей).
 
 
 \begin{theorem}
@@ -230,7 +230,7 @@
 \end{theorem}
 Тогда $G$ является конечным автоматом.
 
-Дальше нам понадобится лемма - критерий регулярности, доказательство которой можно посмотреть в \cite{handbook_of_formal}.
+Дальше нам понадобится лемма, доказательство которой можно посмотреть в \cite{handbook_of_formal}.
 
 \begin{lemma}
     \label{pumping_lemma_4_3}
@@ -253,9 +253,9 @@
     Приведем граф $G$ в нормальную форму $G' = NormalForm(G)$. 
     Очевидно, свойство отсутствия букв на одной части парных циклов сохранится.
     Пусть $k = max_{T \in Core(G',1,1)} len(\omega(T)) + 1$. 
-    По \ref{canon_length_limit_theorem}, длина путей из ядра ограничена, значит $k$ существует и конечно.
+    По теореме \ref{canon_length_limit_theorem}, длина путей из ядра ограничена, значит $k$ существует и конечно.
 
-    Воспользуемся \ref{pumping_lemma_4_3}.
+    Воспользуемся леммой \ref{pumping_lemma_4_3}.
     Рассмотрим префикс успешного пути $T'$, $\omega(T') = w, len(\omega(T')) \geq k$. 
     Так как $len(T') \geq len(\omega(T')) \geq k$, то в $T'$ обязательно есть цикл, 
     причем из выбора $k$, в этом цикле обязательно есть буква.
@@ -276,10 +276,10 @@
 
 \begin{corollary}
     \label{codition_only_neutral}
-    Пусть $Core(G, 1, 0) = Core(G, 1, 1)$.
+    Пусть $Core(G, 1, 0) = Core(G, 1, 1)$ тогда:
     \begin{enumerate}[label=\arabic*)]
-        \item Это эквивалентно $Core(G, 1, d) = Core(G, 1, 0), \forall d = 0,1,2 \dots$.
-        \item Из этого следует, что $G$ -- регулярный.
+        \item $\forall d = 0,1,2 \dots Core(G, 1, d) = Core(G, 1, 0)$.
+        \item $L(G)$ -- регулярный.
     \end{enumerate}
 \end{corollary}
 Это значит, что в путях $Core(G, 1, 1)$ вообще нет парных циклов (а следовательно, и во всех остальных ядрах).

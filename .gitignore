@@ -16,3 +16,6 @@
 /text/images/*
 !/text/main.tex
 !/text/graphs/*.dot
+
+/presentation/*
+!/presentation/*.tex
