@@ -1,0 +1,16 @@
+digraph {
+	node [shape=circle];
+	Q0 [style=invisible, height=0, width=0, fixedsize=true];
+	Q1 [style=invisible, height=0, width=0, fixedsize=true];
+	graph [rankdir="LR"];
+
+	Q0 -> "1,{}";
+	"3,{}" -> Q1;
+	"3,{0, 0}" -> "3,{0}"  [label=<<i>b</i>,<FONT COLOR="blue">)₀</FONT>> ];
+	"1,{}" -> "2,{0}"  [label=<<i>b</i>,<FONT COLOR="blue">(₀</FONT>> ];
+	"2,{0}" -> "3,{0}"  [label=<<i>c</i>> ];
+	"2,{0}" -> "2,{0, 0}"  [label=<<i>b</i>,<FONT COLOR="blue">(₀</FONT>> ];
+	"1,{}" -> "1,{}"  [label=<<i>a</i>> ];
+	"3,{0}" -> "3,{}"  [label=<<i>b</i>,<FONT COLOR="blue">)₀</FONT>> ];
+	"2,{0, 0}" -> "3,{0, 0}"  [label=<<i>c</i>> ];
+}

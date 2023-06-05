@@ -1,0 +1,11 @@
+digraph {
+    node [shape=circle]
+    Q1 [style=invisible, height=0, width=0, fixedsize=true];
+    Q0 [style=invisible, height=0, width=0, fixedsize=true]
+
+    Q0 -> A;
+    A -> A [label=<<i>a</i>,<FONT COLOR="blue">(₁</FONT>> ];
+    A -> B 
+    B -> B [label=<<FONT COLOR="blue">)₁</FONT>> ];
+    B -> Q1;
+}

@@ -1,0 +1,12 @@
+digraph {
+    rankdir = "LR"
+    node [shape=circle]
+    Q1 [style=invisible, height=0, width=0, fixedsize=true];
+    Q0 [style=invisible, height=0, width=0, fixedsize=true]
+    Q0 -> A
+    A -> B [label=<<FONT COLOR="red"><i>a</i></FONT>,<FONT COLOR="blue">(₀</FONT>> ];
+    A -> C [label=<<FONT COLOR="red"><i>a</i></FONT>,<FONT COLOR="blue">(₁</FONT>> ];
+    B -> D [label=<<i>b</i>,<FONT COLOR="blue">)₀</FONT>> ];
+    C -> D [label=<<i>c</i>,<FONT COLOR="blue">)₁</FONT>> ];
+    D -> Q1;
+}

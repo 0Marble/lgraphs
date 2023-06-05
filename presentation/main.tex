@@ -1,31 +1,161 @@
 \documentclass{beamer}
 
-\title{Sample Title}
-\subtitle{Sample Subtitle}
 
-\usetheme{Dresden}
-\usecolortheme{seahorse}
+\usepackage{fontenc}
+
+\usepackage[utf8]{inputenc}
+\usepackage[english, russian]{babel}
+\usepackage{graphicx}
+\usepackage[inkscapeformat=png]{svg}
+\usepackage{subfig}
+\usepackage{minted}
+
+
+\subtitle{Дипломная работа}
+\title{Условия регулярности бесконтекстных L-графов}
+\author{Лобанов А.М. }
+\institute{Университет МГУ-ППИ в Шэньчжэне}
+
+\usetheme{Darmstadt}
 
 \begin{document}
 	\frame {
 		\titlepage
+		научный руководитель: \\ к.ф-м.н. Вылиток А.А.
+	}
+	\frame{
+		\frametitle{Регулярные языки}
+
+		Регулярные языки описывают с помощью \emph{конечных автоматов} или \emph{регулярных выражений}.
+		
+		Регулярное выражение: $a^*b^+cb^*$
+		
+		Конечный автомат:
+		\includesvg{images/nfa.dot.svg}
+		
+		Они описывают язык $L = \{ \alpha \in \Sigma^* \vert \alpha = a^n b^m c b^k, n,k \geq 0, m \geq 1 \}$.
 	}
 	\frame {
-		\frametitle{Sample Page 1}
-		\[\frac{-b \pm \sqrt{b^2 - c}}{2a}\]
+		\frametitle{L-граф}
+		L-граф $G$:
+		\includesvg{images/graph1.dot.svg}
+		Граф $G$ описывает язык $L(G) = \{ \alpha \in \Sigma^* \vert \alpha = a^m b^{n+1} c b^n, m \geq 0, n \geq 0 \}$.
+	}
+	\frame {
+		\frametitle{Задача}
+		Определяет ли данный L-граф регулярный язык?
 	}
 	\frame{
-		\frametitle{Sample Page 2}
-		\framesubtitle{An Example of Lists}
-		\begin{itemize}
-			\item 1
-			\item 2
-			\item 3
-			\item 4
-		\end{itemize}
+		\frametitle{Пути в L-графе}
+		\emph{Путь} в $T$ L-графе -- это последовательность дуг.
+		\includesvg[scale=0.6]{images/graph1_path0.dot.svg}
+		
+		$\iota(T) = (_0 )_0$ -- скобочный след.
+		
+		$\omega(T) = bcb$ -- пометка пути.
+	
 	}
 	\frame{
-	    \frametitle{Paragraph Content}
-	    This is a paragraph.
+		\frametitle{Детерминированный L-граф}
+		Недетерминированый L-граф:
+		\includesvg{images/example_nondetermined.dot.svg}
+		Такие графы не рассматриваем.
+	}
+	\frame{
+		\frametitle{Циклы}
+		\begin{figure}
+			\centering
+			\subfloat[\centering Граф с нейтральным циклом]{
+				\includesvg[scale=0.5]{images/example_neutral.dot.svg}
+			}
+			\qquad
+			\subfloat[\centering Граф с парными циклами]{
+				\includesvg[scale=0.5]{images/example_paired.dot.svg}
+			}
+			\qquad
+			\subfloat[\centering Граф с псевдоциклом]{
+				\includesvg[scale=0.5]{images/example_pseudo.dot.svg}
+			}
+		\end{figure}
+		
+	}
+	\frame{
+		\frametitle{Ядро L-графа}
+		$Core(G, w, d)$ -- это множество всех успешных путей, 
+		где количество подряд идущих нейтральных циклов не превышает $w$, 
+		количество вложенных подряд идущих парных циклов не превышает $d$.  
+
+		L-граф $G$:
+		\includesvg{images/graph1.dot.svg}
+	}
+	\frame {
+		\frametitle{Ядро L-графа}
+		$Core(G,1,1)$:\\
+		\includesvg[scale=0.47]{images/graph1_path0.dot.svg}
+		\includesvg[scale=0.47]{images/graph1_path1.dot.svg}
+		\includesvg[scale=0.47]{images/graph1_path3.dot.svg}
+		\includesvg[scale=0.47]{images/graph1_path4.dot.svg}
+	}
+	\frame {
+		\frametitle{Условия регулярности}
+		Если для $\forall T = T_1 T_2 T_3 T_4 T_5$, $T \in Core(G, 1, 1)$, $(T_2, T_4)$ -- простые парные циклы, 
+		верно, что $\omega(T_2) = \varepsilon$ или $\omega(T_4) = \varepsilon$, то $G$ регулярен.
+
+		L-граф $G$:
+
+		\includesvg{images/reg.dot.svg}				
+
+		$L(G) = \{ \alpha \in \Sigma^* \vert \alpha = a^nb, n \geq 0 \}$.
+
+	}
+	\frame {
+		\frametitle{Условия регулярности}
+		Если для $\forall T = T_1 T_2 T_3 T_4 T_5$, $T \in Core(G, 1, 1)$, $(T_2, T_4)$ -- простые парные циклы, 
+		верно, что $\omega(T_2) = \varepsilon$ или $\omega(T_4) = \varepsilon$, то $G$ регулярен.
+
+		$Core(G, 1, 1)$:
+
+		\includesvg[scale=0.75]{images/reg_path1.dot.svg} \\ 
+		\includesvg[scale=0.75]{images/reg_path2.dot.svg} \\ 		
+	}
+	\frame{
+		\frametitle{Нормальная форма L-графа}
+		L-граф $G$ будем считать L-графом \emph{в нормальной форме}, если в его путях нет \emph{псевдоциклов}.
+
+		Нормальная форма полезна в докозательствах и для решения некоторых задач, таких как проверка языка на конечность.
+	
+	}
+	\frame{
+		\frametitle{Генерация нормальной формы}
+
+		L-граф $G$:
+		\includesvg{images/graph1.dot.svg}
+	}
+	\frame {
+		$Core(G,1,1)$:\\
+		\includesvg[scale=0.47]{images/graph1_path0.dot.svg}
+		\includesvg[scale=0.47]{images/graph1_path1.dot.svg}
+		\includesvg[scale=0.47]{images/graph1_path3.dot.svg}
+		\includesvg[scale=0.47]{images/graph1_path4.dot.svg}
+	}
+	\frame{
+		\frametitle{Генерация нормальной формы}
+		L-граф $G_0$:
+		\includesvg[scale=0.4]{images/graph1_normal_g0.dot.svg}
+	}
+	\frame{
+		\frametitle{Генерация нормальной формы}
+		$Core(G,1,2) \setminus Core(G,1,1)$: \\
+		\includesvg[scale=0.35]{images/graph1_path2.dot.svg}
+		\includesvg[scale=0.35]{images/graph1_path5.dot.svg}
+	}
+	\frame{
+		\frametitle{Генерация нормальной формы}
+		L-граф $G' \sim  G$:
+		\includesvg[scale=0.4]{images/graph1_normal.dot.svg}
+	}
+	\frame {
+		\frametitle{Програмная библиотека}
+		\inputminted[linenos,fontsize=\tiny]{rust}{../lgraphs/examples/presentation.rs}
 	}
 \end{document}
