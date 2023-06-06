@@ -151,14 +151,11 @@ where
                     continue;
                 }
 
-                let t2_mem_loop = mem
-                    .subpath(left.0, left.1)
-                    .unwrap()
-                    .loopify_on_first()
-                    .unwrap();
-                if !g0.has_node(t2_mem_loop.end()) {
+                let t2 = mem.subpath(left.0, left.1).unwrap();
+                if !g0.has_node(t2.beg()) || g0.has_node(t2.end()) {
                     continue;
                 }
+                let t2_mem_loop = t2.loopify_on_first().unwrap();
 
                 for edge in t2_mem_loop.edges() {
                     if !g0.has_edge(edge) {
@@ -166,11 +163,11 @@ where
                     }
                 }
 
-                let t4_mem_loop = mem
-                    .subpath(right.0, right.1)
-                    .unwrap()
-                    .loopify_on_last()
-                    .unwrap();
+                let t4 = mem.subpath(right.0, right.1).unwrap();
+                if g0.has_node(t4.beg()) || !g0.has_node(t4.end()) {
+                    continue;
+                }
+                let t4_mem_loop = t4.loopify_on_last().unwrap();
                 if !g0.has_node(t4_mem_loop.end()) {
                     continue;
                 }

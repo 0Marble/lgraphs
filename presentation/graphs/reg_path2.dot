@@ -4,8 +4,8 @@ digraph {
         node [shape=circle];
         graph [rankdir="LR"];
         0 [label="1"]   1 [label="1"]   2 [label="2"]   3 [label="2"]   Q0 -> 0;
-        0 -> 1 [label = <<i>a</i><FONT COLOR="blue">(₀</FONT>>, color=red];
+        0 -> 1 [label = <<i>a</i><FONT COLOR="blue">(₀</FONT>>, color=red, style=bold];
         1 -> 2 [label = <<i>b</i>>];
-        2 -> 3 [label = <<FONT COLOR="blue">)₀</FONT>>, color=red];
+        2 -> 3 [label = <<FONT COLOR="blue">)₀</FONT>>, color=red, style=bold];
         3->Q1;
 }

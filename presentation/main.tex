@@ -9,8 +9,9 @@
 \usepackage[inkscapeformat=png]{svg}
 \usepackage{subfig}
 \usepackage{minted}
+% \usepackage{enumitem}
 
-
+%cSpell: ignore Вылиток
 \subtitle{Дипломная работа}
 \title{Условия регулярности бесконтекстных L-графов}
 \author{Лобанов А.М. }
@@ -33,33 +34,37 @@
 		Конечный автомат:
 		\includesvg{images/nfa.dot.svg}
 		
-		Они описывают язык $L = \{ \alpha \in \Sigma^* \vert \alpha = a^n b^m c b^k, n,k \geq 0, m \geq 1 \}$.
+		Они описывают язык $L = \{ a^n b^m c b^k \vert n,k \geq 0, m \geq 1 \}$.
 	}
 	\frame {
 		\frametitle{L-граф}
 		L-граф $G$:
 		\includesvg{images/graph1.dot.svg}
-		Граф $G$ описывает язык $L(G) = \{ \alpha \in \Sigma^* \vert \alpha = a^m b^{n+1} c b^n, m \geq 0, n \geq 0 \}$.
+		Граф $G$ описывает язык $L(G) = \{ a^m b^{n+1} c b^n \vert m \geq 0, n \geq 0 \}$.
+	}
+	\frame {
+		\frametitle{Отличие от конечного автомата}
+
+		\includesvg[scale=0.6]{images/graph1_path0.dot.svg} \\
+		\includesvg[scale=0.6]{images/graph1_path_bad.dot.svg} \\
+		$\iota(T_1) = (_0 )_0$ -- скобочный след. Скобки сбалансированы, путь успешен. \\
+		$\iota(T_2) = (_0$ -- несбалансированные скобки, путь не успешен. \\
+		$\omega(T_1) = bcb$ -- пометка пути. \\
+
+		\includesvg[scale=0.6]{images/graph1.dot.svg} $L(G) = \{ \omega(T) \vert T \text{-- успешный путь в }G \}$
 	}
 	\frame {
 		\frametitle{Задача}
 		Определяет ли данный L-граф регулярный язык?
+		Найти достаточные условия регулярности бесконтекстного L-графа.
 	}
-	\frame{
-		\frametitle{Пути в L-графе}
-		\emph{Путь} в $T$ L-графе -- это последовательность дуг.
-		\includesvg[scale=0.6]{images/graph1_path0.dot.svg}
-		
-		$\iota(T) = (_0 )_0$ -- скобочный след.
-		
-		$\omega(T) = bcb$ -- пометка пути.
-	
-	}
-	\frame{
-		\frametitle{Детерминированный L-граф}
-		Недетерминированый L-граф:
-		\includesvg{images/example_nondetermined.dot.svg}
-		Такие графы не рассматриваем.
+	\frame {
+		\frametitle{Память}
+		\emph{Память} описывает состояние L-графа, и является парой $\langle q, \alpha \rangle$, $q$ -- вершина, $\alpha$ -- стек скобок.
+
+		Путь в форме памяти:
+		\includesvg[scale=0.6]{images/graph1_path0_mem.dot.svg}
+
 	}
 	\frame{
 		\frametitle{Циклы}
@@ -90,11 +95,29 @@
 	}
 	\frame {
 		\frametitle{Ядро L-графа}
+		L-граф $G$:\\
+		\includesvg[scale=0.47]{images/graph1.dot.svg}\\
 		$Core(G,1,1)$:\\
 		\includesvg[scale=0.47]{images/graph1_path0.dot.svg}
 		\includesvg[scale=0.47]{images/graph1_path1.dot.svg}
 		\includesvg[scale=0.47]{images/graph1_path3.dot.svg}
 		\includesvg[scale=0.47]{images/graph1_path4.dot.svg}
+
+	}
+	\frame {
+		\frametitle{Условия регулярности}
+		В L-графе $G$ нет дуг с буквами $\implies$ $G$ регулярный. 
+		\includesvg[scale=0.5]{images/reg_cond_1.dot} $L = \{ \varepsilon \}$
+
+		В L-графе $G$ нет дуг со скобками $\implies$ $G$ регулярный.
+		\includesvg[scale=0.5]{images/reg_cond_2.dot} $a^*b^*$
+
+		Пусть $Core(G, 1, 0) = Core(G, 1, 1)$. тогда:
+		\begin{enumerate}
+			\item $\forall d = 0,1,2 \dots Core(G, 1, d) = Core(G, 1, 0)$.
+			\item $L(G)$ -- регулярный.
+		\end{enumerate}
+		\includesvg[scale=0.5]{images/reg_cond_3.dot.svg} $ab^*$
 	}
 	\frame {
 		\frametitle{Условия регулярности}
@@ -103,59 +126,87 @@
 
 		L-граф $G$:
 
-		\includesvg{images/reg.dot.svg}				
+		\includesvg{images/reg_cond_4.dot.svg}				
 
-		$L(G) = \{ \alpha \in \Sigma^* \vert \alpha = a^nb, n \geq 0 \}$.
+		$L(G) = \{ a^nb \vert n \geq 0 \}$.
 
 	}
 	\frame {
 		\frametitle{Условия регулярности}
-		Если для $\forall T = T_1 T_2 T_3 T_4 T_5$, $T \in Core(G, 1, 1)$, $(T_2, T_4)$ -- простые парные циклы, 
-		верно, что $\omega(T_2) = \varepsilon$ или $\omega(T_4) = \varepsilon$, то $G$ регулярен.
+		L-граф $G$:\\
+		\includesvg[scale=0.75]{images/reg_cond_4.dot.svg}				
 
 		$Core(G, 1, 1)$:
 
 		\includesvg[scale=0.75]{images/reg_path1.dot.svg} \\ 
 		\includesvg[scale=0.75]{images/reg_path2.dot.svg} \\ 		
+		$L(G) = \{ a^nb \vert n \geq 0 \}$ соответствует регулярному выражению $a^*b$.
 	}
 	\frame{
 		\frametitle{Нормальная форма L-графа}
 		L-граф $G$ будем считать L-графом \emph{в нормальной форме}, если в его путях нет \emph{псевдоциклов}.
 
-		Нормальная форма полезна в докозательствах и для решения некоторых задач, таких как проверка языка на конечность.
+		Нормальная форма полезна в доказательствах и для решения некоторых задач, таких как проверка языка на конечность или на пустоту.
 	
 	}
 	\frame{
-		\frametitle{Генерация нормальной формы}
+		\frametitle{Приведение к нормальной форме}
 
 		L-граф $G$:
 		\includesvg{images/graph1.dot.svg}
 	}
 	\frame {
+		\frametitle{Приведение к нормальной форме}
 		$Core(G,1,1)$:\\
 		\includesvg[scale=0.47]{images/graph1_path0.dot.svg}
 		\includesvg[scale=0.47]{images/graph1_path1.dot.svg}
 		\includesvg[scale=0.47]{images/graph1_path3.dot.svg}
 		\includesvg[scale=0.47]{images/graph1_path4.dot.svg}
-	}
-	\frame{
-		\frametitle{Генерация нормальной формы}
 		L-граф $G_0$:
 		\includesvg[scale=0.4]{images/graph1_normal_g0.dot.svg}
 	}
 	\frame{
-		\frametitle{Генерация нормальной формы}
+		\frametitle{Приведение к нормальной форме}
 		$Core(G,1,2) \setminus Core(G,1,1)$: \\
-		\includesvg[scale=0.35]{images/graph1_path2.dot.svg}
-		\includesvg[scale=0.35]{images/graph1_path5.dot.svg}
+		\includesvg[scale=0.35]{images/graph1_path2.dot.svg} \\
+		\includesvg[scale=0.35]{images/graph1_path5.dot.svg} \\
+		L-граф $G'$: \\
+		\includesvg[scale=0.4]{images/graph1_normal.dot.svg}
 	}
 	\frame{
-		\frametitle{Генерация нормальной формы}
-		L-граф $G' \sim  G$:
+		\frametitle{Приведение к нормальной форме}
+		L-граф $G$:\\
+		\includesvg[scale=0.4]{images/graph1.dot.svg}\\
+		L-граф $G' \sim  G$:\\
 		\includesvg[scale=0.4]{images/graph1_normal.dot.svg}
 	}
 	\frame {
 		\frametitle{Програмная библиотека}
 		\inputminted[linenos,fontsize=\tiny]{rust}{../lgraphs/examples/presentation.rs}
+	}
+	\begin{frame}[fragile]
+		\frametitle{Програмная библиотека}
+		Вывод программы для графа $G$:\\
+		\includesvg[scale=0.7]{images/reg_cond_4.dot.svg}\\
+		\begin{small}
+			\begin{verbatim}
+				$ ->1;2->;1-a,[1->1;1-b->2;2-]1->2;
+				$ 1-b->2
+				$ 1-a,[1->1-b->2-]1->2
+				$ ->1,{};2,{}->;1,{}-a,[1->1,{1};1,{}-b->2,{};2,{1}-]1->2,{};
+						1,{1}-b->2,{1};1,{1}-a,[1->1,{1};2,{1}-]1->2,{1};
+				$ Does the graph not have letters on paired loops? true
+			\end{verbatim}
+		\end{small}
+
+	\end{frame} 
+	\frame{
+		\frametitle{Результаты}
+		\begin{enumerate}
+			\item Найдены алгоритмически реализуемые достаточные условия регулярности L-графов.
+			\item Разработан алгоритм построения ядер L-графа.
+			\item Разработан алгоритм приведения L-графа к нормальной форме.
+			\item Создана программная библиотека, реализующая все разработанные алгоритмы и проверку условий регулярности.
+		\end{enumerate}
 	}
 \end{document}

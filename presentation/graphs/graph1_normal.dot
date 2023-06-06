@@ -13,8 +13,6 @@ digraph {
 	"1,{}" -> "1,{}"  [label=<<i>a</i>> ];
 	"3,{0}" -> "3,{}"  [label=<<i>b</i>,<FONT COLOR="blue">)₀</FONT>> ];
 	"2,{0, 0}" -> "3,{0, 0}"  [label=<<i>c</i>> ];
-	"2,{0}" -> "2,{0}"  [label=<<i>b</i>,<FONT COLOR="blue">(₀</FONT>>,color=red ];
-	"3,{0}" -> "3,{0}"  [label=<<i>b</i>,<FONT COLOR="blue">)₀</FONT>>,color=red ];
-	"2,{0, 0}" -> "2,{0, 0}"  [label=<<i>b</i>,<FONT COLOR="blue">(₀</FONT>>,color=fuchsia ];
-	"3,{0, 0}" -> "3,{0, 0}"  [label=<<i>b</i>,<FONT COLOR="blue">)₀</FONT>>,color=fuchsia ];
+	"2,{0, 0}" -> "2,{0, 0}"  [label=<<i>b</i>,<FONT COLOR="blue">(₀</FONT>>,color=fuchsia, style=bold ];
+	"3,{0, 0}" -> "3,{0, 0}"  [label=<<i>b</i>,<FONT COLOR="blue">)₀</FONT>>,color=fuchsia, style=bold ];
 }

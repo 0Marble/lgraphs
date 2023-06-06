@@ -6,6 +6,7 @@
 /images
 /test.sh
 /.vscode
+/paths
 
 /text/*
 !/text/graphs
