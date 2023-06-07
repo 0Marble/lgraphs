@@ -1,29 +1,68 @@
-\documentclass{beamer}
-
+\documentclass[12pt]{beamer}
 
 \usepackage{fontenc}
-
 \usepackage[utf8]{inputenc}
 \usepackage[english, russian]{babel}
 \usepackage{graphicx}
 \usepackage[inkscapeformat=png]{svg}
 \usepackage{subfig}
 \usepackage{minted}
-% \usepackage{enumitem}
 
-%cSpell: ignore Вылиток
-\subtitle{Дипломная работа}
+\usetheme[progressbar=frametitle]{metropolis}
+\setbeamercolor{background canvas}{bg=white}
+
+\setbeamertemplate{title page}{
+    \begin{minipage}[c][\paperheight]{\textwidth}
+        \ifx\inserttitlegraphic\@empty\else\usebeamertemplate*{title graphic}\fi
+        \vfill%
+        {
+        \centering
+        \ifx\inserttitle\@empty\else\usebeamertemplate*{title}\fi
+        \ifx\insertsubtitle\@empty\else\usebeamertemplate*{subtitle}\fi
+        }
+        \usebeamertemplate*{title separator}
+        \begin{minipage}[t]{.5\textwidth}
+            \ifx\beamer@shortauthor\@empty\else\usebeamertemplate*{author}\fi
+            \ifx\insertdate\@empty\else\usebeamertemplate*{date}\fi
+        \end{minipage}
+        \begin{minipage}[t]{.5\textwidth}
+            \vspace*{2em}
+            {\hspace{3.2em}\small Научный руководитель: \par }
+			{\hspace{3.2em}Вылиток А.А. }
+        \end{minipage}%
+
+        \begin{minipage}[t]{\textwidth}
+            \ifx\insertinstitute\@empty\else\usebeamertemplate*{institute}\fi
+        \end{minipage}
+        \vfill
+        \vspace*{1mm}
+    \end{minipage}
+}
+
+
+\setbeamertemplate{title}{
+%  \raggedright%  % <-- Comment here
+  \linespread{1.0}%
+  \inserttitle%
+  \par%
+  \vspace*{0.5em}
+}
+\setbeamertemplate{subtitle}{
+%  \raggedright%  % <-- Comment here
+  \insertsubtitle%
+  \par%
+  \vspace*{0.5em}
+}
+
+
 \title{Условия регулярности бесконтекстных L-графов}
+\subtitle{Дипломная работа}
 \author{Лобанов А.М. }
 \institute{Университет МГУ-ППИ в Шэньчжэне}
 
-\usetheme{Darmstadt}
 
 \begin{document}
-	\frame {
-		\titlepage
-		научный руководитель: \\ к.ф-м.н. Вылиток А.А.
-	}
+	\maketitle
 	\frame{
 		\frametitle{Регулярные языки}
 
@@ -56,6 +95,7 @@
 	\frame {
 		\frametitle{Задача}
 		Определяет ли данный L-граф регулярный язык?
+		
 		Найти достаточные условия регулярности бесконтекстного L-графа.
 	}
 	\frame {
